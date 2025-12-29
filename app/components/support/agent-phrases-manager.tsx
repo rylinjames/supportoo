@@ -111,13 +111,13 @@ export function AgentPhrasesManager() {
     }
   };
 
-  const groupedPhrases = phrases.reduce((acc, phrase) => {
+  const groupedPhrases = phrases.reduce((acc: Record<string, typeof phrases>, phrase) => {
     if (!acc[phrase.category]) {
       acc[phrase.category] = [];
     }
     acc[phrase.category].push(phrase);
     return acc;
-  }, {} as Record<PhraseCategory, typeof phrases>);
+  }, {} as Record<string, typeof phrases>);
 
   return (
     <div>

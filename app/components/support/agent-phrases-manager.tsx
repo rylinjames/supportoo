@@ -169,11 +169,11 @@ export function AgentPhrasesManager() {
                         variant="outline"
                         className={`${getCategoryColor(category as PhraseCategory)} text-xs`}
                       >
-                        {categoryPhrases.length}
+                        {(categoryPhrases as AgentPhrase[]).length}
                       </Badge>
                     </div>
                     <div className="space-y-2">
-                      {categoryPhrases.map((phrase) => (
+                      {(categoryPhrases as AgentPhrase[]).map((phrase) => (
                         <div
                           key={phrase._id}
                           className="p-3 border rounded-lg hover:bg-muted/50 transition-colors"

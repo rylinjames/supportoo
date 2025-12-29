@@ -207,7 +207,7 @@ export const atomicIncrement = mutation({
       throw new Error(`Record not found in ${tableName}`);
     }
     
-    const currentValue = record[field] || 0;
+    const currentValue = (record as any)[field] || 0;
     const newValue = currentValue + increment;
     
     if (maxValue !== undefined && newValue > maxValue) {

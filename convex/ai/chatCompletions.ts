@@ -21,7 +21,7 @@ export const generateChatResponse = action({
     conversationId: v.id("conversations"),
     messageId: v.id("messages"),
   },
-  handler: async (ctx, { conversationId, messageId }) => {
+  handler: async (ctx, { conversationId, messageId }): Promise<any> => {
     console.log("🤖 Starting Chat Completions generation");
     
     // Store these outside try block so they're available in catch
@@ -294,7 +294,7 @@ export const testChatCompletion = action({
     companyId: v.id("companies"),
     query: v.string(),
   },
-  handler: async (ctx, { companyId, query }) => {
+  handler: async (ctx, { companyId, query }): Promise<any> => {
     const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
       companyId,
     });

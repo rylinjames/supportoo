@@ -12,7 +12,7 @@ import { Id, Doc } from "../_generated/dataModel";
 import { api } from "../_generated/api";
 
 // Type definitions
-export type UserRole = "admin" | "support" | "customer";
+export type UserRole = "admin" | "manager" | "support" | "viewer" | "customer";
 export type UserCompany = {
   companyId: Id<"companies">;
   role: UserRole;
@@ -92,7 +92,9 @@ export const checkUserAccess = query({
     companyId: v.id("companies"),
     requiredRole: v.union(
       v.literal("admin"),
+      v.literal("manager"),
       v.literal("support"),
+      v.literal("viewer"),
       v.literal("customer")
     ),
   },
@@ -107,7 +109,13 @@ export const checkUserAccess = query({
     if (!userRole) return false;
 
     // Role hierarchy check
-    const roleHierarchy = { admin: 3, support: 2, customer: 1 };
+    const roleHierarchy = { 
+      admin: 5, 
+      manager: 4, 
+      support: 3, 
+      viewer: 2, 
+      customer: 1 
+    };
     return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
   },
 });

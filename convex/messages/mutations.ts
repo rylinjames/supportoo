@@ -321,7 +321,7 @@ export const sendAgentMessage = mutation({
     // Acquire lock to prevent race conditions when multiple agents join simultaneously
     let lockId = null;
     try {
-      const lock = await acquireLock(ctx, {
+      const lock = await ctx.runMutation(api.utils.transactions.acquireLock, {
         resourceType: "conversation",
         resourceId: args.conversationId,
         userId: args.agentId,
@@ -412,7 +412,7 @@ export const sendAgentMessage = mutation({
 
       // Release lock before returning
       if (lockId) {
-        await releaseLock(ctx, { lockId, userId: args.agentId });
+        await ctx.runMutation(api.utils.transactions.releaseLock, { lockId, userId: args.agentId });
       }
 
       return messageId;
@@ -420,7 +420,7 @@ export const sendAgentMessage = mutation({
       // Always release lock on error
       if (lockId) {
         try {
-          await releaseLock(ctx, { lockId, userId: args.agentId });
+          await ctx.runMutation(api.utils.transactions.releaseLock, { lockId, userId: args.agentId });
         } catch {
           // Ignore release errors
         }

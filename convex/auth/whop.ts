@@ -75,7 +75,8 @@ export const verifyWhopUser = action({
           const companyId = process.env.WHOP_COMPANY_ID || "biz_2T7tC1fnFVo6d4"; // Fallback to the company ID from env
           
           // Get list of authorized users for this company
-          const authorizedUsers = await whopSdk.companies.listAuthorizedUsers({ companyId });
+          const result = await whopSdk.companies.listAuthorizedUsers({ companyId });
+          const authorizedUsers = (result as any)?.authorizedUsers || [];
           
           // Find this specific user
           const teamMember = authorizedUsers.find((u: any) => u.id === userId);

@@ -389,8 +389,7 @@ export const generateAIResponse = action({
             },
             temperature: 0.7,
             max_completion_tokens: getTokenLimit(aiConfig.aiResponseLength),
-            additional_instructions: companyContext ? `CRITICAL: ${companyContext}` : undefined,
-          });
+          } as any);
 
           // Wrap streamPromise with polling fallback
           const streamPromiseWithPolling =

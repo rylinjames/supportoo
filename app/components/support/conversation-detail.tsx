@@ -955,9 +955,9 @@ export function ConversationDetail({
         </div>
 
         {/* Internal Notes Section - Only visible to agents */}
-        {conversation._id && (
+        {conversation.id && (
           <div className="px-4 py-3 border-b border-border">
-            <InternalNotes conversationId={conversation._id as Id<"conversations">} />
+            <InternalNotes conversationId={conversation.id as Id<"conversations">} />
           </div>
         )}
 

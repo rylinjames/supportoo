@@ -37,7 +37,7 @@ export function EnhancedQuickReplyPicker({
   const agentPhrases = useQuery(api.agentPhrases.getMyPhrases) ?? [];
 
   // Convert agent phrases to template format
-  const personalTemplates: QuickReplyTemplate[] = agentPhrases.map((phrase) => ({
+  const personalTemplates: QuickReplyTemplate[] = agentPhrases.map((phrase: any) => ({
     id: phrase._id,
     title: phrase.title,
     content: phrase.content,

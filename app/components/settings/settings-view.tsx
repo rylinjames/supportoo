@@ -22,7 +22,7 @@ import { COMMON_TIMEZONES, detectTimezone } from "@/app/lib/timezones";
 import { AgentGreetingSettings } from "../support/agent-greeting-settings";
 
 export function SettingsView() {
-  const { userData } = useUser();
+  const { userData, getCurrentRole } = useUser();
   const [isLoading, setIsLoading] = useState(true);
   const updatePreferences = useMutation(
     api.users.preferences_mutations.updateUserPreferences
@@ -347,7 +347,7 @@ export function SettingsView() {
               </div>
 
               {/* Agent Greeting Settings - Only for support/admin users */}
-              {(userData?.currentRole === "support" || userData?.currentRole === "admin") && (
+              {(getCurrentRole() === "support" || getCurrentRole() === "admin") && (
                 <div className="mt-8">
                   <AgentGreetingSettings />
                 </div>

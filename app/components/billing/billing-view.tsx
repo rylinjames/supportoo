@@ -102,7 +102,7 @@ export function BillingView({ experienceId }: BillingViewProps) {
             <AvailablePlansSection
               allPlans={allPlans}
               currentPlan={
-                allPlans.find((plan) => plan.name === fullConfig.plan.name)!
+                allPlans.find((plan: any) => plan.name === fullConfig.plan.name)!
               }
               companyId={fullConfig.companyId}
               scheduledPlanChangeAt={fullConfig.scheduledPlanChangeAt}

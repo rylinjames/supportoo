@@ -52,8 +52,6 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     // Define allowed routes per role
     const customerAllowedRoutes = ["/customer-view"];
     const supportAllowedRoutes = ["/", "/settings", "/customer-test", "/workspace"];
-    const viewerAllowedRoutes = ["/", "/insights", "/settings"];  // Read-only access
-    const managerAllowedRoutes = ["/", "/ai-studio", "/insights", "/workspace", "/customer-test", "/settings"];  // No billing
 
     if (role === "customer") {
       // Customer: Only allow /customer-view with correct customerId
@@ -67,12 +65,6 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     } else if (role === "support") {
       // Support: Can handle tickets and access workspace
       return supportAllowedRoutes.includes(routeWithoutQuery);
-    } else if (role === "viewer") {
-      // Viewer: Read-only access to support and insights
-      return viewerAllowedRoutes.includes(routeWithoutQuery);
-    } else if (role === "manager") {
-      // Manager: Everything except billing
-      return managerAllowedRoutes.includes(routeWithoutQuery);
     } else if (role === "admin") {
       // Admin: Allow all routes except customer-view (only in dev mode)
       if (routeWithoutQuery === "/customer-view") {
@@ -139,20 +131,6 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     } else if (role === "support") {
       const supportAllowedRoutes = ["/", "/settings", "/customer-test", "/workspace"];
       if (!supportAllowedRoutes.includes(routeWithoutQuery)) {
-        // Redirect to support dashboard (root)
-        router.replace(`${baseUrl}/`);
-        return;
-      }
-    } else if (role === "viewer") {
-      const viewerAllowedRoutes = ["/", "/insights", "/settings"];
-      if (!viewerAllowedRoutes.includes(routeWithoutQuery)) {
-        // Redirect to support dashboard (root)
-        router.replace(`${baseUrl}/`);
-        return;
-      }
-    } else if (role === "manager") {
-      const managerAllowedRoutes = ["/", "/ai-studio", "/insights", "/workspace", "/customer-test", "/settings"];
-      if (!managerAllowedRoutes.includes(routeWithoutQuery)) {
         // Redirect to support dashboard (root)
         router.replace(`${baseUrl}/`);
         return;

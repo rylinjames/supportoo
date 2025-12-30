@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Send, User, Bot, UserCheck, ArrowLeft } from "lucide-react";
+import { Send, User, Bot, UserCheck, ArrowLeft, MessageSquarePlus } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -137,6 +137,29 @@ export default function CustomerTestPage() {
     }
   };
 
+  // Create new conversation
+  const handleNewConversation = async () => {
+    if (!userData?.currentCompanyId || !testCustomerId) return;
+
+    try {
+      // Create a new conversation
+      const newConvId = await createConversation({
+        customerId: testCustomerId,
+        companyId: userData.currentCompanyId as Id<"companies">,
+      });
+      
+      // Update the conversation ID to the new one
+      setConversationId(newConvId);
+      setIsTyping(false);
+      setMessageInput("");
+      
+      toast.success("Started new conversation");
+    } catch (error) {
+      console.error("Error creating new conversation:", error);
+      toast.error("Failed to start new conversation");
+    }
+  };
+
   // Format timestamp
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString("en-US", {
@@ -165,8 +188,18 @@ export default function CustomerTestPage() {
           </div>
         </div>
         
-        {/* Status Badge */}
-        <div className="flex items-center gap-2">
+        {/* Status Badge and New Conversation Button */}
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={handleNewConversation}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            New Conversation
+          </Button>
+          
           {conversation?.status === "ai_handling" && (
             <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/10 text-blue-500 rounded-full">
               <Bot className="h-4 w-4" />
@@ -306,7 +339,7 @@ export default function CustomerTestPage() {
             <Input
               value={messageInput}
               onChange={(e) => setMessageInput(e.target.value)}
-              onKeyPress={(e) => {
+              onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSendMessage();

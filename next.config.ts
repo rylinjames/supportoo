@@ -7,7 +7,10 @@ const nextConfig: NextConfig = {
     serverActions: {
       allowedOrigins: [
         "lebjqylqv61w9ox1uiyp.apps.whop.com",
-        "whop-ai-chat-kappa.vercel.app",
+        "supportoo.vercel.app",
+        "https://supportoo.vercel.app",
+        "*.whop.com",
+        "*.apps.whop.com",
       ],
     },
   },

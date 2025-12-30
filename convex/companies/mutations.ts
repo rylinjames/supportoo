@@ -38,7 +38,7 @@ export const createCompany = mutation({
       planId: freePlan._id,
 
       // Default AI configuration
-      selectedAiModel: freePlan.aiModels[0], // Use first model from free plan
+      selectedAiModel: freePlan.aiModels[0], // Default to gpt-5-nano from free plan
       aiPersonality: "professional", // Default until wizard
       aiResponseLength: "medium", // Default
       aiSystemPrompt: "", // Empty until wizard

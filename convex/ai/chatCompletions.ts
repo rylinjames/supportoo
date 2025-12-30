@@ -130,14 +130,14 @@ ${company.aiSystemPrompt || ""}`;
       
       // Log the exact system message being sent
       console.log("📤 Sending to OpenAI with system message:", {
-        model: company.selectedAiModel || "gpt-4",
+        model: company.selectedAiModel || "gpt-5-nano",
         systemMessagePreview: systemMessage.substring(0, 200) + "...",
         messageCount: chatMessages.length,
         lastUserMessage: chatMessages[chatMessages.length - 1]?.content
       });
       
       const completion = await openai.chat.completions.create({
-        model: company.selectedAiModel || "gpt-4",
+        model: company.selectedAiModel || "gpt-5-nano",
         messages: chatMessages,
         temperature: 0.7,
         max_tokens: getMaxTokens(company.aiResponseLength || "medium"),

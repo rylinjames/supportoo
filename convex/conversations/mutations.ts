@@ -58,22 +58,31 @@ export const createConversation = mutation({
  *
  * Creates a single conversation that persists forever for this customer.
  * This conversation handles all future interactions and never gets deleted.
+ * NOTE: In test mode, we always create a new conversation for isolation.
  */
 export const createCustomerConversation = mutation({
   args: {
     customerId: v.id("users"),
     companyId: v.id("companies"),
+    forceNew: v.optional(v.boolean()), // For test mode to create new conversations
   },
-  handler: async (ctx, { customerId, companyId }) => {
-    // Safety: Check if already exists
-    const existing = await ctx.db
-      .query("conversations")
-      .withIndex("by_company_customer", (q) =>
-        q.eq("companyId", companyId).eq("customerId", customerId)
-      )
-      .first();
+  handler: async (ctx, { customerId, companyId, forceNew = false }) => {
+    // Check if this is a test customer
+    const customer = await ctx.db.get(customerId);
+    const isTestCustomer = customer?.whopUserId?.startsWith("test_customer_");
+    
+    // For test customers or when forceNew is true, always create new conversation
+    if (!isTestCustomer && !forceNew) {
+      // Safety: Check if already exists (only for real customers)
+      const existing = await ctx.db
+        .query("conversations")
+        .withIndex("by_company_customer", (q) =>
+          q.eq("companyId", companyId).eq("customerId", customerId)
+        )
+        .first();
 
-    if (existing) return existing._id;
+      if (existing) return existing._id;
+    }
 
     const now = Date.now();
 

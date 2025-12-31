@@ -49,7 +49,7 @@ export default function CustomerTestPage() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [testCustomerName, setTestCustomerName] = useState("Test Customer");
   
-  useState(() => {
+  useEffect(() => {
     const initialize = async () => {
       if (!isInitialized && userData?.currentCompanyId && !conversationId) {
         setIsInitialized(true);
@@ -63,10 +63,11 @@ export default function CustomerTestPage() {
           setTestCustomerId(testCustomer._id);
           setTestCustomerName(testCustomer.displayName);
           
-          // Create conversation
+          // Create conversation (with forceNew for test customer)
           const convId = await createConversation({
             customerId: testCustomer._id,
             companyId: userData.currentCompanyId as Id<"companies">,
+            forceNew: true, // Always create new for test customer
           });
           
           setConversationId(convId);
@@ -75,7 +76,7 @@ export default function CustomerTestPage() {
     };
     
     initialize();
-  });
+  }, [userData?.currentCompanyId, isInitialized, conversationId, getOrCreateTestCustomer, createConversation]);
 
   // Get conversation messages
   const messages = useQuery(
@@ -142,10 +143,11 @@ export default function CustomerTestPage() {
     if (!userData?.currentCompanyId || !testCustomerId) return;
 
     try {
-      // Create a new conversation
+      // Create a new conversation (force new for test customer)
       const newConvId = await createConversation({
         customerId: testCustomerId,
         companyId: userData.currentCompanyId as Id<"companies">,
+        forceNew: true, // Always create new for test customer
       });
       
       // Update the conversation ID to the new one

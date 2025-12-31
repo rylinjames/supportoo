@@ -67,16 +67,26 @@ export const createCustomerConversation = mutation({
     forceNew: v.optional(v.boolean()), // For test mode to create new conversations
   },
   handler: async (ctx, { customerId, companyId, forceNew = false }) => {
+    console.log("\n=== 🔄 CREATE CUSTOMER CONVERSATION ===");
+    console.log("📝 Input:", { customerId, companyId, forceNew });
+    
     // Check if this is a test customer
     const customer = await ctx.db.get(customerId);
+    console.log("👤 Customer:", {
+      id: customer?._id,
+      whopUserId: customer?.whopUserId,
+      displayName: customer?.displayName
+    });
+    
     const isTestCustomer = customer?.whopUserId?.startsWith("test_customer_");
+    console.log("🧪 Is test customer:", isTestCustomer);
     
     // Only check for existing conversation if:
     // 1. It's NOT a test customer AND
     // 2. forceNew is false
     // Test customers with forceNew=true should always get new conversations
     if (!isTestCustomer && !forceNew) {
-      // Safety: Check if already exists (only for real customers)
+      console.log("🔍 Checking for existing conversation (real customer)...");
       const existing = await ctx.db
         .query("conversations")
         .withIndex("by_company_customer", (q) =>
@@ -84,11 +94,16 @@ export const createCustomerConversation = mutation({
         )
         .first();
 
-      if (existing) return existing._id;
+      if (existing) {
+        console.log("✅ Found existing conversation:", existing._id);
+        return existing._id;
+      }
+      console.log("🆕 No existing conversation found for real customer");
     }
     
     // For test customers when NOT forcing new, also check for existing
     if (isTestCustomer && !forceNew) {
+      console.log("🔍 Checking for existing conversation (test customer, not forcing new)...");
       const existing = await ctx.db
         .query("conversations")
         .withIndex("by_company_customer", (q) =>
@@ -96,12 +111,21 @@ export const createCustomerConversation = mutation({
         )
         .first();
 
-      if (existing) return existing._id;
+      if (existing) {
+        console.log("✅ Found existing conversation for test customer:", existing._id);
+        return existing._id;
+      }
+      console.log("🆕 No existing conversation found for test customer");
+    }
+    
+    if (isTestCustomer && forceNew) {
+      console.log("🆕 Test customer with forceNew=true, creating new conversation...");
     }
 
     const now = Date.now();
-
-    return await ctx.db.insert("conversations", {
+    
+    console.log("🆕 Creating new conversation...");
+    const newConvId = await ctx.db.insert("conversations", {
       companyId,
       customerId,
       status: "ai_handling",
@@ -113,6 +137,10 @@ export const createCustomerConversation = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    
+    console.log("✅ New conversation created:", newConvId);
+    console.log("=== END CREATE CUSTOMER CONVERSATION ===\n");
+    return newConvId;
   },
 });
 

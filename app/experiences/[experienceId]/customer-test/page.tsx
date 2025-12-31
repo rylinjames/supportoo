@@ -118,23 +118,50 @@ export default function CustomerTestPage() {
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!messageInput.trim() || !conversationId || !testCustomerId) return;
+    console.log("[CLIENT] handleSendMessage called");
+    console.log("[CLIENT] Message state:", {
+      messageInput: messageInput.substring(0, 50),
+      conversationId,
+      testCustomerId,
+      experienceId
+    });
+    
+    if (!messageInput.trim() || !conversationId || !testCustomerId) {
+      console.log("[CLIENT] Cannot send - missing data:", {
+        hasMessage: !!messageInput.trim(),
+        hasConversationId: !!conversationId,
+        hasTestCustomerId: !!testCustomerId
+      });
+      return;
+    }
 
     const message = messageInput.trim();
     setMessageInput("");
     setIsTyping(true);
 
     try {
+      console.log("[CLIENT] Sending message:", {
+        conversationId,
+        content: message.substring(0, 50) + "...",
+        experienceId
+      });
+      
       await sendMessage({
         conversationId,
         content: message,
         experienceId, // Pass the experience ID for AI config
       });
+      
+      console.log("[CLIENT] Message sent successfully");
       // AI will respond automatically after a short delay
       setTimeout(() => setIsTyping(false), 2000); // Show typing indicator for 2 seconds
-    } catch (error) {
-      console.error("Error sending message:", error);
-      toast.error("Failed to send message");
+    } catch (error: any) {
+      console.error("[CLIENT] Error sending message:", {
+        error,
+        message: error?.message,
+        data: error?.data
+      });
+      toast.error(`Failed to send message: ${error?.message || 'Unknown error'}`);
       setIsTyping(false);
     }
   };
@@ -156,9 +183,29 @@ export default function CustomerTestPage() {
 
   // Create new conversation
   const handleNewConversation = async () => {
-    if (!userData?.currentCompanyId || !testCustomerId) return;
+    console.log("[CLIENT] handleNewConversation called");
+    console.log("[CLIENT] Current state:", {
+      companyId: userData?.currentCompanyId,
+      testCustomerId,
+      currentConversationId: conversationId
+    });
+    
+    if (!userData?.currentCompanyId || !testCustomerId) {
+      console.error("[CLIENT] Missing required data:", {
+        hasCompanyId: !!userData?.currentCompanyId,
+        hasTestCustomerId: !!testCustomerId
+      });
+      toast.error("Missing required data. Please refresh the page.");
+      return;
+    }
 
     try {
+      console.log("[CLIENT] Calling createConversation with:", {
+        customerId: testCustomerId,
+        companyId: userData.currentCompanyId,
+        forceNew: true
+      });
+      
       // Create a new conversation (force new for test customer)
       const newConvId = await createConversation({
         customerId: testCustomerId,
@@ -166,15 +213,22 @@ export default function CustomerTestPage() {
         forceNew: true, // Always create new for test customer
       });
       
+      console.log("[CLIENT] New conversation created:", newConvId);
+      
       // Update the conversation ID to the new one
       setConversationId(newConvId);
       setIsTyping(false);
       setMessageInput("");
       
       toast.success("Started new conversation");
-    } catch (error) {
-      console.error("Error creating new conversation:", error);
-      toast.error("Failed to start new conversation");
+    } catch (error: any) {
+      console.error("[CLIENT] Error creating new conversation:", {
+        error,
+        message: error?.message,
+        data: error?.data,
+        stack: error?.stack
+      });
+      toast.error(`Failed to start new conversation: ${error?.message || 'Unknown error'}`);
     }
   };
 

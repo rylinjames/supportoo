@@ -22,7 +22,10 @@ export const generateChatResponse = action({
     messageId: v.id("messages"),
   },
   handler: async (ctx, { conversationId, messageId }): Promise<any> => {
-    console.log("🤖 Starting Chat Completions generation");
+    console.log("\n=== 🤖 AI RESPONSE GENERATION START ===");
+    console.log("📝 Conversation ID:", conversationId);
+    console.log("📝 Message ID:", messageId);
+    console.log("🕐 Timestamp:", new Date().toISOString());
     
     // Store these outside try block so they're available in catch
     let aiMessageCreated = false;
@@ -30,30 +33,54 @@ export const generateChatResponse = action({
 
     try {
       // 1. Get conversation and company data
+      console.log("\n📊 STEP 1: Fetching conversation data...");
       conversation = await ctx.runQuery(
         api.conversations.queries.getConversation,
         { conversationId }
       );
 
       if (!conversation) {
+        console.error("❌ ERROR: Conversation not found for ID:", conversationId);
         throw new Error("Conversation not found");
       }
+      console.log("✅ Conversation found:", {
+        id: conversation._id,
+        status: conversation.status,
+        customerId: conversation.customerId,
+        companyId: conversation.companyId
+      });
 
+      console.log("\n📊 STEP 2: Fetching company data...");
       const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId: conversation.companyId,
       });
 
       if (!company) {
+        console.error("❌ ERROR: Company not found for ID:", conversation.companyId);
         throw new Error("Company not found");
       }
+      console.log("✅ Company found:", {
+        id: company._id,
+        name: company.name,
+        model: company.selectedAiModel,
+        hasContext: !!company.companyContextOriginal
+      });
 
       // 2. Get conversation history (last 20 messages for context)
+      console.log("\n📊 STEP 3: Fetching conversation history...");
       const messages = await ctx.runQuery(api.messages.queries.getMessages, {
         conversationId,
         limit: 20,
       });
+      console.log("💬 Messages fetched:", messages.length);
+      console.log("💬 Last 3 messages:", messages.slice(-3).map(m => ({
+        role: m.role,
+        content: m.content.substring(0, 50) + "...",
+        timestamp: new Date(m.timestamp).toISOString()
+      })));
 
       // 3. Build the system message with company context
+      console.log("\n📊 STEP 4: Building system message...");
       const companyContext =
         company.companyContextOriginal || 
         company.companyContextProcessed || 
@@ -61,7 +88,7 @@ export const generateChatResponse = action({
 
       // Ensure company context is always included
       if (!companyContext) {
-        console.error("❌ CRITICAL: No company context found! Company data:", {
+        console.error("⚠️ WARNING: No company context found! Company data:", {
           companyId: company._id,
           hasOriginal: !!company.companyContextOriginal,
           hasProcessed: !!company.companyContextProcessed,
@@ -69,7 +96,10 @@ export const generateChatResponse = action({
           processedLength: company.companyContextProcessed?.length || 0
         });
       } else {
-        console.log("✅ Company context loaded:", companyContext.substring(0, 100) + "...");
+        console.log("✅ Company context loaded:", {
+          length: companyContext.length,
+          preview: companyContext.substring(0, 100) + "..."
+        });
       }
 
       // Build system message with explicit company identification
@@ -132,18 +162,25 @@ ${company.aiSystemPrompt || ""}`;
       });
 
       // 5. Generate response using Chat Completions
+      console.log("\n📊 STEP 5: Calling OpenAI API...");
       const startTime = Date.now();
       
-      // Log the exact system message being sent
-      console.log("📤 Sending to OpenAI with system message:", {
-        model: company.selectedAiModel || "gpt-5-nano",
-        systemMessagePreview: systemMessage.substring(0, 200) + "...",
+      // Log the exact request being sent
+      const modelToUse = company.selectedAiModel || "gpt-5-nano";
+      console.log("🚀 OpenAI Request Details:", {
+        model: modelToUse,
+        systemMessageLength: systemMessage.length,
+        systemMessagePreview: systemMessage.substring(0, 300),
         messageCount: chatMessages.length,
-        lastUserMessage: chatMessages[chatMessages.length - 1]?.content
+        messages: chatMessages.map((m, i) => ({
+          index: i,
+          role: m.role,
+          contentPreview: (m.content as string).substring(0, 100) + "..."
+        }))
       });
       
       const completion = await openai.chat.completions.create({
-        model: company.selectedAiModel || "gpt-5-nano",
+        model: modelToUse,
         messages: chatMessages,
         temperature: 0.7,
         max_tokens: getMaxTokens(company.aiResponseLength || "medium"),
@@ -155,12 +192,25 @@ ${company.aiSystemPrompt || ""}`;
       const response = completion.choices[0]?.message?.content || "";
       const usage = completion.usage;
 
+      console.log("\n📊 STEP 6: OpenAI Response Received");
+      console.log("🎯 Response Details:", {
+        processingTime: `${processingTime}ms`,
+        responseLength: response.length,
+        responsePreview: response.substring(0, 200) + "...",
+        fullResponse: response,
+        tokensUsed: {
+          input: usage?.prompt_tokens,
+          output: usage?.completion_tokens,
+          total: usage?.total_tokens
+        },
+        model: completion.model,
+        finishReason: completion.choices[0]?.finish_reason
+      });
+
       if (!response) {
+        console.error("❌ ERROR: No response generated from OpenAI!");
         throw new Error("No response generated from OpenAI");
       }
-
-      console.log(`✅ AI response generated in ${processingTime}ms`);
-      console.log(`📊 Tokens used - Input: ${usage?.prompt_tokens}, Output: ${usage?.completion_tokens}`);
 
       // 6. Check for handoff triggers
       let shouldHandoff = false;

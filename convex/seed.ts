@@ -29,7 +29,7 @@ export const seedInitialData = mutation({
       whopPlanId: "plan_Fj2mgLWut4G8J", // Whop Free plan
 
       // AI Configuration
-      aiModels: ["gpt-5-nano"],
+      aiModels: ["gpt-4o-mini"],
       aiResponsesPerMonth: 20,
 
       // Features
@@ -50,7 +50,7 @@ export const seedInitialData = mutation({
       whopPlanId: "plan_9mdGo5MNCGo0J", // Whop Pro plan
 
       // AI Configuration
-      aiModels: ["gpt-5-nano", "gpt-5-mini"],
+      aiModels: ["gpt-4o-mini", "gpt-4o"],
       aiResponsesPerMonth: 5000,
 
       // Features
@@ -71,7 +71,7 @@ export const seedInitialData = mutation({
       whopPlanId: "plan_8ZkuyDwyYbNos", // Whop Elite plan
 
       // AI Configuration
-      aiModels: ["gpt-5", "gpt-5-mini", "gpt-5-nano"],
+      aiModels: ["gpt-4o", "gpt-4o-mini", "gpt-4"],
       aiResponsesPerMonth: 25000,
 
       // Features

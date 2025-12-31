@@ -154,8 +154,26 @@ ${company.aiSystemPrompt || ""}`;
       // Add conversation history (already in chronological order from query)
       // DO NOT REVERSE - messages are already oldest first from getMessages query
       console.log("\n🔴 BUILDING CHAT MESSAGES FOR OPENAI:");
-      messages.forEach((msg, index) => {
+      
+      // CRITICAL: Find the triggering message that we're responding to
+      const triggeringMessage = await ctx.runQuery(api.messages.queries.getMessage, { messageId });
+      console.log("🎯 TRIGGERING MESSAGE:", {
+        id: messageId,
+        role: triggeringMessage?.role,
+        content: triggeringMessage?.content?.substring(0, 100),
+        timestamp: triggeringMessage?.timestamp
+      });
+      
+      // Only include messages UP TO (but not including) the triggering message
+      // This prevents the AI from seeing future messages or its own response
+      const messageIndex = messages.findIndex(m => m._id === messageId);
+      const messagesToInclude = messageIndex >= 0 ? messages.slice(0, messageIndex + 1) : messages;
+      
+      console.log(`🔍 Including ${messagesToInclude.length} of ${messages.length} messages (up to trigger)`);
+      
+      messagesToInclude.forEach((msg, index) => {
         console.log(`  Message ${index + 1}:`, {
+          id: msg._id,
           role: msg.role,
           content: msg.content.substring(0, 100),
           timestamp: new Date(msg.timestamp).toISOString()
@@ -185,7 +203,8 @@ ${company.aiSystemPrompt || ""}`;
       const startTime = Date.now();
       
       // Log the exact request being sent
-      const modelToUse = company.selectedAiModel || "gpt-5-nano";
+      // Use gpt-4o for now since gpt-5-nano doesn't exist yet
+      const modelToUse = "gpt-4o";
       console.log("🚀 OpenAI Request Details:", {
         model: modelToUse,
         systemMessageLength: systemMessage.length,

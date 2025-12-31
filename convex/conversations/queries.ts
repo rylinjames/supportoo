@@ -20,6 +20,29 @@ export const getConversation = query({
 });
 
 // ============================================================================
+// GET LATEST CONVERSATION FOR TEST CUSTOMER
+// ============================================================================
+
+export const getLatestTestConversation = query({
+  args: {
+    customerId: v.id("users"),
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { customerId, companyId }) => {
+    // Get the most recent conversation for this test customer
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_company_customer", (q) =>
+        q.eq("companyId", companyId).eq("customerId", customerId)
+      )
+      .order("desc") // Most recent first
+      .take(1);
+    
+    return conversations[0]?._id || null;
+  },
+});
+
+// ============================================================================
 // LIST CONVERSATIONS FOR AGENTS (Support/Admin)
 // ============================================================================
 

@@ -25,7 +25,22 @@ export default function CustomerTestPage() {
 
   // Create a test customer user
   const [testCustomerId, setTestCustomerId] = useState<Id<"users"> | null>(null);
-  const [conversationId, setConversationId] = useState<Id<"conversations"> | null>(null);
+  
+  // Use sessionStorage to persist conversation ID across navigation
+  const [conversationId, setConversationId] = useState<Id<"conversations"> | null>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem(`test-conversation-${experienceId}`);
+      return stored as Id<"conversations"> | null;
+    }
+    return null;
+  });
+  
+  // Update sessionStorage when conversation ID changes
+  useEffect(() => {
+    if (conversationId && typeof window !== 'undefined') {
+      sessionStorage.setItem(`test-conversation-${experienceId}`, conversationId);
+    }
+  }, [conversationId, experienceId]);
 
   // Get or create test customer
   const getOrCreateTestCustomer = useMutation(
@@ -70,8 +85,8 @@ export default function CustomerTestPage() {
           
           // Only create conversation if we don't have one
           if (!conversationId) {
-            // For initial load, reuse existing conversation if one exists
-            // Only force new when user explicitly clicks "New Conversation"
+            // Always create or get a conversation
+            // This returns the latest existing one or creates a new one
             const convId = await createConversation({
               customerId: testCustomer._id,
               companyId: userData.currentCompanyId as Id<"companies">,
@@ -225,8 +240,11 @@ export default function CustomerTestPage() {
       
       logClient("New conversation created", { newConvId });
       
-      // Update the conversation ID to the new one
+      // Update the conversation ID and store in sessionStorage
       setConversationId(newConvId);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`test-conversation-${experienceId}`, newConvId);
+      }
       setIsTyping(false);
       setMessageInput("");
       

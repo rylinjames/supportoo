@@ -9,7 +9,7 @@ import { useUser } from "@/app/contexts/user-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, User, Bot, UserCheck, ArrowLeft, MessageSquarePlus } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -21,7 +21,6 @@ export default function CustomerTestPage() {
   const [messageInput, setMessageInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // Create a test customer user
   const [testCustomerId, setTestCustomerId] = useState<Id<"users"> | null>(null);
@@ -52,7 +51,10 @@ export default function CustomerTestPage() {
   // Initialize test customer and conversation on first mount only
   useEffect(() => {
     const initialize = async () => {
-      if (!userData?.currentCompanyId) return;
+      if (!userData?.currentCompanyId) {
+        setIsLoading(false);
+        return;
+      }
       
       setIsLoading(true);
       try {
@@ -67,24 +69,29 @@ export default function CustomerTestPage() {
           
           // Only create conversation if we don't have one
           if (!conversationId) {
+            // For initial load, reuse existing conversation if one exists
+            // Only force new when user explicitly clicks "New Conversation"
             const convId = await createConversation({
               customerId: testCustomer._id,
               companyId: userData.currentCompanyId as Id<"companies">,
-              forceNew: false, // Don't force new on initial mount - reuse if exists
             });
             
             setConversationId(convId);
           }
+        } else {
+          throw new Error("Could not create test customer");
         }
       } catch (error) {
         console.error("Error initializing test customer:", error);
-        toast.error("Failed to initialize test customer");
+        toast.error("Failed to initialize test customer. Please refresh the page.");
       } finally {
         setIsLoading(false);
       }
     };
     
-    initialize();
+    if (userData?.currentCompanyId) {
+      initialize();
+    }
   }, [userData?.currentCompanyId]); // Only depend on companyId change
 
   // Get conversation messages
@@ -235,7 +242,29 @@ export default function CustomerTestPage() {
       {/* Chat Messages */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4 max-w-3xl mx-auto">
-          {messages?.map((message: any) => {
+          {/* Show error state if failed to initialize */}
+          {!conversationId && !isLoading && (
+            <div className="flex flex-col items-center justify-center py-20">
+              <p className="text-muted-foreground mb-4">Failed to initialize chat</p>
+              <Button
+                onClick={() => window.location.reload()}
+                variant="outline"
+                size="sm"
+              >
+                Refresh Page
+              </Button>
+            </div>
+          )}
+          
+          {/* Show loading state */}
+          {isLoading && !conversationId && (
+            <div className="flex items-center justify-center py-20">
+              <p className="text-muted-foreground animate-pulse">Initializing test environment...</p>
+            </div>
+          )}
+          
+          {/* Show messages only when conversation is ready */}
+          {conversationId && messages?.map((message: any) => {
             const isCustomer = message.role === "customer";
             const isSystem = message.role === "system";
             const isAgent = message.role === "agent";

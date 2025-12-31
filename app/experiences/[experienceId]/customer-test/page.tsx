@@ -46,14 +46,16 @@ export default function CustomerTestPage() {
   );
 
   // Initialize conversation when component mounts
-  const [isInitialized, setIsInitialized] = useState(false);
   const [testCustomerName, setTestCustomerName] = useState("Test Customer");
+  const [isLoading, setIsLoading] = useState(true);
   
+  // Initialize test customer and conversation on first mount only
   useEffect(() => {
     const initialize = async () => {
-      if (!isInitialized && userData?.currentCompanyId && !conversationId) {
-        setIsInitialized(true);
-        
+      if (!userData?.currentCompanyId) return;
+      
+      setIsLoading(true);
+      try {
         // Get or create test customer
         const testCustomer = await getOrCreateTestCustomer({
           companyId: userData.currentCompanyId as Id<"companies">,
@@ -63,20 +65,27 @@ export default function CustomerTestPage() {
           setTestCustomerId(testCustomer._id);
           setTestCustomerName(testCustomer.displayName);
           
-          // Create conversation (with forceNew for test customer)
-          const convId = await createConversation({
-            customerId: testCustomer._id,
-            companyId: userData.currentCompanyId as Id<"companies">,
-            forceNew: true, // Always create new for test customer
-          });
-          
-          setConversationId(convId);
+          // Only create conversation if we don't have one
+          if (!conversationId) {
+            const convId = await createConversation({
+              customerId: testCustomer._id,
+              companyId: userData.currentCompanyId as Id<"companies">,
+              forceNew: false, // Don't force new on initial mount - reuse if exists
+            });
+            
+            setConversationId(convId);
+          }
         }
+      } catch (error) {
+        console.error("Error initializing test customer:", error);
+        toast.error("Failed to initialize test customer");
+      } finally {
+        setIsLoading(false);
       }
     };
     
     initialize();
-  }, [userData?.currentCompanyId, isInitialized, conversationId, getOrCreateTestCustomer, createConversation]);
+  }, [userData?.currentCompanyId]); // Only depend on companyId change
 
   // Get conversation messages
   const messages = useQuery(
@@ -347,13 +356,13 @@ export default function CustomerTestPage() {
                   handleSendMessage();
                 }
               }}
-              placeholder="Type your message..."
-              disabled={isTyping}
+              placeholder={isLoading ? "Initializing..." : "Type your message..."}
+              disabled={isTyping || isLoading}
               className="flex-1"
             />
             <Button
               onClick={handleSendMessage}
-              disabled={!messageInput.trim() || isTyping}
+              disabled={!messageInput.trim() || isTyping || !conversationId || isLoading}
               size="icon"
             >
               <Send className="h-4 w-4" />

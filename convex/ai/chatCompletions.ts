@@ -95,9 +95,15 @@ Response style:
 - Never mention being an AI
 
 ${company.aiSystemPrompt || ""}` : 
-        `ERROR: No company context configured. Please configure company context in the settings.
+        `You are a helpful customer support assistant. Since no specific company context has been configured yet, I'll do my best to help you with your questions.
 
-You are a customer support representative. Please provide helpful support to customers.
+If asked who you work for, politely explain that the company information hasn't been set up yet in the Workspace settings.
+
+Response style:
+- Be helpful and professional
+- Use natural, conversational language
+- Focus on understanding and helping with the customer's needs
+- If you need specific company information to answer a question, politely explain that this information needs to be configured in the Workspace tab
 
 ${company.aiSystemPrompt || ""}`;
 

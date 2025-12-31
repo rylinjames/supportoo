@@ -73,11 +73,17 @@ export const generateChatResponse = action({
         limit: 20,
       });
       console.log("💬 Messages fetched:", messages.length);
-      console.log("💬 Last 3 messages:", messages.slice(-3).map(m => ({
-        role: m.role,
-        content: m.content.substring(0, 50) + "...",
-        timestamp: new Date(m.timestamp).toISOString()
-      })));
+      console.log("💬 CRITICAL - Message order check:");
+      console.log("  First message:", messages[0] ? {
+        role: messages[0].role,
+        content: messages[0].content.substring(0, 50),
+        timestamp: new Date(messages[0].timestamp).toISOString()
+      } : "none");
+      console.log("  Last message:", messages[messages.length - 1] ? {
+        role: messages[messages.length - 1].role,
+        content: messages[messages.length - 1].content.substring(0, 50),
+        timestamp: new Date(messages[messages.length - 1].timestamp).toISOString()
+      } : "none");
 
       // 3. Build the system message with company context
       console.log("\n📊 STEP 4: Building system message...");
@@ -108,16 +114,17 @@ export const generateChatResponse = action({
 ${companyContext}
 
 CRITICAL COMMUNICATION RULES:
-1. ONLY mention your company name in these specific situations:
+1. ALWAYS respond directly to the customer's LATEST message
+2. Focus on what they just asked - don't repeat previous responses
+3. If they ask for help with something specific, provide that help immediately
+4. ONLY mention your company name in these specific situations:
    - Your very first greeting to a NEW conversation
    - When customer EXPLICITLY asks "who do you work for" or similar direct questions
-   - When the customer says they know where you work and tells you to stop mentioning it
-2. After the initial greeting, DO NOT mention the company name again unless directly asked
-3. Focus on being helpful and solving problems
-4. When customer says "I know you work for X, stop telling me", acknowledge and stop mentioning it
-5. Be natural and conversational - talk like a human support agent, not a robot
+5. After the initial greeting, DO NOT mention the company name again unless directly asked
+6. Be natural and conversational - talk like a human support agent, not a robot
 
 Response style:
+- Answer the customer's CURRENT question directly
 - Be helpful and professional
 - Use natural, conversational language
 - Don't repeat information unnecessarily
@@ -145,8 +152,9 @@ ${company.aiSystemPrompt || ""}`;
         },
       ];
 
-      // Add conversation history (oldest first)
-      messages.reverse().forEach((msg) => {
+      // Add conversation history (already in chronological order from query)
+      // DO NOT REVERSE - messages are already oldest first from getMessages query
+      messages.forEach((msg) => {
         if (msg.role === "customer") {
           chatMessages.push({
             role: "user",

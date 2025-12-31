@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, User, Bot, UserCheck, ArrowLeft, MessageSquarePlus } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { logClient, logError } from "@/lib/debug-logger";
 
 export default function CustomerTestPage() {
   const params = useParams();
@@ -99,6 +100,21 @@ export default function CustomerTestPage() {
     api.messages.queries.getMessages,
     conversationId ? { conversationId } : "skip"
   );
+  
+  // Log when messages change
+  useEffect(() => {
+    if (messages && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      logClient("Messages updated", {
+        totalMessages: messages.length,
+        lastMessage: {
+          role: lastMessage.role,
+          content: lastMessage.content.substring(0, 100),
+          timestamp: new Date(lastMessage.timestamp).toISOString()
+        }
+      });
+    }
+  }, [messages]);
 
   // Get conversation details
   const conversation = useQuery(
@@ -118,8 +134,7 @@ export default function CustomerTestPage() {
   }, [messages]);
 
   const handleSendMessage = async () => {
-    console.log("[CLIENT] handleSendMessage called");
-    console.log("[CLIENT] Message state:", {
+    logClient("handleSendMessage called", {
       messageInput: messageInput.substring(0, 50),
       conversationId,
       testCustomerId,
@@ -127,7 +142,7 @@ export default function CustomerTestPage() {
     });
     
     if (!messageInput.trim() || !conversationId || !testCustomerId) {
-      console.log("[CLIENT] Cannot send - missing data:", {
+      logClient("Cannot send - missing data", {
         hasMessage: !!messageInput.trim(),
         hasConversationId: !!conversationId,
         hasTestCustomerId: !!testCustomerId
@@ -140,9 +155,9 @@ export default function CustomerTestPage() {
     setIsTyping(true);
 
     try {
-      console.log("[CLIENT] Sending message:", {
+      logClient("Sending message", {
         conversationId,
-        content: message.substring(0, 50) + "...",
+        content: message,
         experienceId
       });
       
@@ -152,15 +167,11 @@ export default function CustomerTestPage() {
         experienceId, // Pass the experience ID for AI config
       });
       
-      console.log("[CLIENT] Message sent successfully");
+      logClient("Message sent successfully");
       // AI will respond automatically after a short delay
       setTimeout(() => setIsTyping(false), 2000); // Show typing indicator for 2 seconds
     } catch (error: any) {
-      console.error("[CLIENT] Error sending message:", {
-        error,
-        message: error?.message,
-        data: error?.data
-      });
+      logError("Error sending message", error);
       toast.error(`Failed to send message: ${error?.message || 'Unknown error'}`);
       setIsTyping(false);
     }
@@ -183,15 +194,14 @@ export default function CustomerTestPage() {
 
   // Create new conversation
   const handleNewConversation = async () => {
-    console.log("[CLIENT] handleNewConversation called");
-    console.log("[CLIENT] Current state:", {
+    logClient("handleNewConversation called", {
       companyId: userData?.currentCompanyId,
       testCustomerId,
       currentConversationId: conversationId
     });
     
     if (!userData?.currentCompanyId || !testCustomerId) {
-      console.error("[CLIENT] Missing required data:", {
+      logError("Missing required data for new conversation", {
         hasCompanyId: !!userData?.currentCompanyId,
         hasTestCustomerId: !!testCustomerId
       });
@@ -200,7 +210,7 @@ export default function CustomerTestPage() {
     }
 
     try {
-      console.log("[CLIENT] Calling createConversation with:", {
+      logClient("Calling createConversation", {
         customerId: testCustomerId,
         companyId: userData.currentCompanyId,
         forceNew: true
@@ -213,7 +223,7 @@ export default function CustomerTestPage() {
         forceNew: true, // Always create new for test customer
       });
       
-      console.log("[CLIENT] New conversation created:", newConvId);
+      logClient("New conversation created", { newConvId });
       
       // Update the conversation ID to the new one
       setConversationId(newConvId);
@@ -222,12 +232,7 @@ export default function CustomerTestPage() {
       
       toast.success("Started new conversation");
     } catch (error: any) {
-      console.error("[CLIENT] Error creating new conversation:", {
-        error,
-        message: error?.message,
-        data: error?.data,
-        stack: error?.stack
-      });
+      logError("Error creating new conversation", error);
       toast.error(`Failed to start new conversation: ${error?.message || 'Unknown error'}`);
     }
   };

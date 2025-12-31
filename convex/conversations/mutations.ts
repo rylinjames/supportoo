@@ -71,9 +71,24 @@ export const createCustomerConversation = mutation({
     const customer = await ctx.db.get(customerId);
     const isTestCustomer = customer?.whopUserId?.startsWith("test_customer_");
     
-    // For test customers or when forceNew is true, always create new conversation
+    // Only check for existing conversation if:
+    // 1. It's NOT a test customer AND
+    // 2. forceNew is false
+    // Test customers with forceNew=true should always get new conversations
     if (!isTestCustomer && !forceNew) {
       // Safety: Check if already exists (only for real customers)
+      const existing = await ctx.db
+        .query("conversations")
+        .withIndex("by_company_customer", (q) =>
+          q.eq("companyId", companyId).eq("customerId", customerId)
+        )
+        .first();
+
+      if (existing) return existing._id;
+    }
+    
+    // For test customers when NOT forcing new, also check for existing
+    if (isTestCustomer && !forceNew) {
       const existing = await ctx.db
         .query("conversations")
         .withIndex("by_company_customer", (q) =>

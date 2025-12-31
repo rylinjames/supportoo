@@ -44,9 +44,9 @@ export const createCompany = mutation({
       aiSystemPrompt: "", // Empty until wizard
       aiHandoffTriggers: [], // Empty until wizard
 
-      // Company context (empty until wizard)
-      companyContextOriginal: "",
-      companyContextProcessed: "",
+      // Company context - set default for better AI responses
+      companyContextOriginal: "You work for Apple. Apple designs, manufactures, and markets smartphones, personal computers, tablets, wearables, and accessories. Key products include iPhone, Mac, iPad, Apple Watch, and AirPods. We also provide services like the App Store, Apple Music, iCloud, and Apple Pay.",
+      companyContextProcessed: "You work for Apple. Apple designs, manufactures, and markets smartphones, personal computers, tablets, wearables, and accessories. Key products include iPhone, Mac, iPad, Apple Watch, and AirPods. We also provide services like the App Store, Apple Music, iCloud, and Apple Pay.",
       companyContextFileId: undefined,
       companyContextLastUpdated: now,
 

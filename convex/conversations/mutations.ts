@@ -67,19 +67,9 @@ export const createCustomerConversation = mutation({
     forceNew: v.optional(v.boolean()), // For test mode to create new conversations
   },
   handler: async (ctx, { customerId, companyId, forceNew = false }) => {
-    console.log("\n=== 🔄 CREATE CUSTOMER CONVERSATION ===");
-    console.log("📝 Input:", { customerId, companyId, forceNew });
-    
     // Check if this is a test customer
     const customer = await ctx.db.get(customerId);
-    console.log("👤 Customer:", {
-      id: customer?._id,
-      whopUserId: customer?.whopUserId,
-      displayName: customer?.displayName
-    });
-    
     const isTestCustomer = customer?.whopUserId?.startsWith("test_customer_");
-    console.log("🧪 Is test customer:", isTestCustomer);
     
     // Only check for existing conversation if:
     // 1. It's NOT a test customer AND

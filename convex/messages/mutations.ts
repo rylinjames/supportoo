@@ -282,6 +282,13 @@ export const sendCustomerMessage = mutation({
       };
 
       // Schedule AI response with 1 second delay (debounce)
+      console.log("🔴 SCHEDULING AI RESPONSE FOR MESSAGE:", {
+        conversationId: args.conversationId,
+        messageId,
+        customerMessage: args.content,
+        timestamp: new Date().toISOString()
+      });
+      
       const jobId = await ctx.scheduler.runAfter(
         500, // 0.5 second debounce
         api.ai.chatCompletions.generateChatResponse,
@@ -296,7 +303,7 @@ export const sendCustomerMessage = mutation({
         pendingAIJobId: jobId,
       });
 
-      console.log(`⏰ AI response scheduled in 1s (jobId: ${jobId})`);
+      console.log(`🔴 AI RESPONSE SCHEDULED! JobId: ${jobId}, Will run in 0.5 seconds`);
     }
 
     return messageId;

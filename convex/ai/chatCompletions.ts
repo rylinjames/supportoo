@@ -7,7 +7,6 @@ import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { api } from "../_generated/api";
 import OpenAI from "openai";
-import { Doc } from "../_generated/dataModel";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -154,7 +153,14 @@ ${company.aiSystemPrompt || ""}`;
 
       // Add conversation history (already in chronological order from query)
       // DO NOT REVERSE - messages are already oldest first from getMessages query
-      messages.forEach((msg) => {
+      console.log("\n🔴 BUILDING CHAT MESSAGES FOR OPENAI:");
+      messages.forEach((msg, index) => {
+        console.log(`  Message ${index + 1}:`, {
+          role: msg.role,
+          content: msg.content.substring(0, 100),
+          timestamp: new Date(msg.timestamp).toISOString()
+        });
+        
         if (msg.role === "customer") {
           chatMessages.push({
             role: "user",
@@ -168,6 +174,11 @@ ${company.aiSystemPrompt || ""}`;
         }
         // Skip system messages as they're not part of the conversation flow
       });
+      
+      console.log("\n🔴 FINAL CHAT MESSAGES TO SEND:");
+      console.log("  Total messages:", chatMessages.length);
+      console.log("  Last user message:", chatMessages.filter(m => m.role === 'user').pop()?.content);
+      console.log("  System prompt length:", systemMessage.length);
 
       // 5. Generate response using Chat Completions
       console.log("\n📊 STEP 5: Calling OpenAI API...");

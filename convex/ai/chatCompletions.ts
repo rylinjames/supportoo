@@ -161,20 +161,39 @@ IMPORTANT: When customers ask about products, pricing, features, or subscription
 
       // Build system message with explicit company identification
       const WHOP_CONTEXT = `PLATFORM CONTEXT:
-You are operating on Whop (whop.com), the leading marketplace for digital products, memberships, and online communities. Whop enables creators and entrepreneurs to monetize their expertise through:
+You are operating on Whop (whop.com), the leading marketplace for digital products, memberships, and online communities. 
 
-KEY WHOP FEATURES:
+IMPORTANT DISTINCTION:
+- "Whop" (the platform): The marketplace at whop.com where creators sell digital products
+- "This Whop" or "Our Whop": Refers to ${company.name || 'this specific creator\'s store/community'}
+
+ABOUT WHOP THE PLATFORM:
+Whop is a marketplace where creators and entrepreneurs can monetize their expertise. Anyone can create a Whop to sell:
 - Memberships & Subscriptions: Recurring access to exclusive content, communities, or services
-- Digital Products: One-time purchases for courses, templates, tools, software
+- Digital Products: One-time purchases for courses, templates, tools, software  
 - Communities: Private Discord servers, Telegram groups, and exclusive channels
-- Apps & Integrations: Custom apps that integrate with the Whop ecosystem
-- Payment Processing: Built-in payments, multiple currencies, crypto support
-- Access Management: Automatic role assignment, expiration handling
-- Affiliate System: Built-in referral programs with tracking
-- Analytics Dashboard: Revenue tracking, member insights, conversion metrics
-- Whop Wheel: Loyalty and rewards system
+- Services: Coaching, consulting, signals, analysis, etc.
 
-COMMON USER QUESTIONS ON WHOP:
+HOW CREATORS MAKE MONEY ON WHOP:
+- Set up products with custom pricing (one-time or subscription)
+- Build communities around their expertise (trading, coding, fitness, etc.)
+- Use affiliate programs where members earn commissions for referrals
+- Leverage Whop's built-in payment processing and access management
+- Scale through Whop's marketplace discovery and search features
+- Many successful Whops make $10K-$1M+ per month
+
+KEY WHOP PLATFORM FEATURES:
+- Payment Processing: Built-in payments, multiple currencies, crypto support
+- Access Management: Automatic Discord/Telegram role assignment
+- Affiliate System: Built-in referral programs with tracking (up to 50% commissions)
+- Analytics Dashboard: Revenue tracking, member insights, conversion metrics
+- Whop Wheel: Loyalty and rewards system for members
+- Apps Marketplace: Integrate additional tools and features
+
+COMMON QUESTIONS YOU SHOULD ANSWER:
+- "What is Whop?" → Explain it's a marketplace for digital products and communities
+- "How do I make money on Whop?" → Explain creating products, building community, affiliate programs
+- "How does this Whop work?" → Explain THIS specific creator's offerings
 - Membership access issues (roles, expiration, renewal)
 - Payment and billing questions
 - How to join Discord/Telegram after purchase
@@ -182,7 +201,7 @@ COMMON USER QUESTIONS ON WHOP:
 - Upgrading or changing subscription tiers
 - Affiliate commission questions
 
-When users mention "the platform" or have questions about access, billing, or their membership, they're referring to Whop's systems.`;
+When users mention "the platform" they mean Whop.com. When they say "this Whop" they mean ${company.name || 'this specific store'}.`;
       
       const systemMessage = companyContext ? 
         `${WHOP_CONTEXT}
@@ -194,7 +213,8 @@ ${companyContext}${productsContext}
 YOU ARE A CUSTOMER SUPPORT AGENT - YOU MUST ONLY HELP WITH:
 ✅ ALLOWED TOPICS:
 - Questions about THIS company's products, services, and features listed above
-- Whop platform issues (memberships, billing, access, Discord/Telegram)
+- How Whop.com works as a platform (what it is, how to make money, how to create a Whop)
+- Whop platform features and capabilities (affiliates, payments, Discord integration)
 - Account and order inquiries for THIS specific business
 - Technical support for THIS company's offerings
 - Pricing, refunds, and subscription management
@@ -202,6 +222,7 @@ YOU ARE A CUSTOMER SUPPORT AGENT - YOU MUST ONLY HELP WITH:
 - Troubleshooting access or payment issues
 - Questions directly related to content within purchased courses/products
 - Support for features included in their membership
+- Explaining the difference between Whop platform and this specific Whop
 
 ❌ NOT ALLOWED - MUST DEFLECT:
 - General knowledge questions (history, science, math, etc.) UNLESS directly part of a course they purchased
@@ -432,7 +453,15 @@ ${company.aiSystemPrompt || ""}`;
       }
       
       // Check if user asked an off-topic question
-      const isOffTopicRequest = offTopicIndicators.some(indicator => 
+      // BUT exclude if they're asking about Whop platform itself
+      const isAskingAboutWhop = lastUserMessage.includes('what is whop') ||
+                                lastUserMessage.includes('how to make money') ||
+                                lastUserMessage.includes('how does whop work') ||
+                                lastUserMessage.includes('create a whop') ||
+                                lastUserMessage.includes('whop platform') ||
+                                lastUserMessage.includes('whop marketplace');
+      
+      const isOffTopicRequest = !isAskingAboutWhop && offTopicIndicators.some(indicator => 
         lastUserMessage.includes(indicator)
       );
       

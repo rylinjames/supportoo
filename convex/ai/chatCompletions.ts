@@ -84,7 +84,15 @@ export const generateChatResponse = action({
         timestamp: new Date(messages[messages.length - 1].timestamp).toISOString()
       } : "none");
 
-      // 3. Build the system message with company context
+      // 3. Get company products (TODO: Enable after API generation)
+      console.log("\n📊 STEP 3.5: Fetching company products...");
+      // const products = await ctx.runQuery(api.products.queries.getActiveProducts, {
+      //   companyId: conversation.companyId,
+      // });
+      const products: any[] = []; // Temporary empty array until products API is generated
+      console.log("🛍️ Products fetched:", products.length);
+
+      // 4. Build the system message with company context
       console.log("\n📊 STEP 4: Building system message...");
       const companyContext =
         company.companyContextOriginal || 
@@ -105,6 +113,50 @@ export const generateChatResponse = action({
           length: companyContext.length,
           preview: companyContext.substring(0, 100) + "..."
         });
+      }
+
+      // Build products context
+      let productsContext = "";
+      if (products.length > 0) {
+        console.log("✅ Building products context:", {
+          count: products.length,
+          productTitles: products.slice(0, 3).map((p: any) => p.title)
+        });
+
+        productsContext = `\n\nCOMPANY PRODUCTS & SERVICES:
+${products.map((product: any) => {
+  let productInfo = `• ${product.title}`;
+  
+  if (product.price && product.currency) {
+    const price = (product.price / 100).toFixed(2);
+    productInfo += ` - ${product.currency} $${price}`;
+    
+    if (product.accessType === "subscription" && product.billingPeriod) {
+      productInfo += ` per ${product.billingPeriod.replace('ly', '')}`;
+    } else if (product.accessType === "lifetime") {
+      productInfo += ` (lifetime access)`;
+    }
+  }
+  
+  if (product.description) {
+    productInfo += `\n  Description: ${product.description.substring(0, 200)}${product.description.length > 200 ? '...' : ''}`;
+  }
+  
+  if (product.productType) {
+    productInfo += `\n  Type: ${product.productType.replace('_', ' ')}`;
+  }
+  
+  if (product.features && product.features.length > 0) {
+    productInfo += `\n  Key Features: ${product.features.slice(0, 3).join(', ')}`;
+  }
+  
+  return productInfo;
+}).join('\n\n')}
+
+IMPORTANT: When customers ask about products, pricing, features, or subscriptions, refer to the exact information above. Always provide accurate pricing and billing information.`;
+      } else {
+        console.log("⚠️ No products found for this company");
+        productsContext = "";
       }
 
       // Build system message with explicit company identification
@@ -136,7 +188,7 @@ When users mention "the platform" or have questions about access, billing, or th
         `${WHOP_CONTEXT}
 
 COMPANY IDENTITY (INTERNAL KNOWLEDGE ONLY):
-${companyContext}
+${companyContext}${productsContext}
 
 CRITICAL COMMUNICATION RULES:
 1. ALWAYS respond directly to the customer's LATEST message
@@ -194,12 +246,12 @@ ${company.aiSystemPrompt || ""}`;
       
       // Only include messages UP TO (but not including) the triggering message
       // This prevents the AI from seeing future messages or its own response
-      const messageIndex = messages.findIndex(m => m._id === messageId);
+      const messageIndex = messages.findIndex((m: any) => m._id === messageId);
       const messagesToInclude = messageIndex >= 0 ? messages.slice(0, messageIndex + 1) : messages;
       
       console.log(`🔍 Including ${messagesToInclude.length} of ${messages.length} messages (up to trigger)`);
       
-      messagesToInclude.forEach((msg, index) => {
+      messagesToInclude.forEach((msg: any, index: number) => {
         console.log(`  Message ${index + 1}:`, {
           id: msg._id,
           role: msg.role,

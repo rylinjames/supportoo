@@ -587,4 +587,82 @@ export default defineSchema({
   })
     .index("by_company_period", ["companyId", "period", "periodStart"])
     .index("by_period_start", ["periodStart"]),
+
+  // ============================================================================
+  // PRODUCTS - Whop products/listings for AI context
+  // ============================================================================
+  products: defineTable({
+    // Relationships
+    companyId: v.id("companies"),
+
+    // Whop product information
+    whopProductId: v.string(), // Whop's product/listing ID
+    whopCompanyId: v.string(), // Whop company that owns this product
+    
+    // Product details
+    title: v.string(),
+    description: v.optional(v.string()),
+    price: v.optional(v.number()), // Price in cents
+    currency: v.optional(v.string()), // Currency code (USD, EUR, etc.)
+    
+    // Product type and access
+    productType: v.union(
+      v.literal("membership"),
+      v.literal("digital_product"), 
+      v.literal("course"),
+      v.literal("community"),
+      v.literal("software"),
+      v.literal("other")
+    ),
+    accessType: v.union(
+      v.literal("one_time"),
+      v.literal("subscription"),
+      v.literal("lifetime")
+    ),
+    
+    // Subscription details (if applicable)
+    billingPeriod: v.optional(v.union(
+      v.literal("monthly"),
+      v.literal("yearly"),
+      v.literal("weekly"),
+      v.literal("daily")
+    )),
+    
+    // Product status
+    isActive: v.boolean(),
+    isVisible: v.boolean(),
+    
+    // Additional metadata
+    category: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    imageUrl: v.optional(v.string()),
+    
+    // Features and benefits (for AI context)
+    features: v.optional(v.array(v.string())),
+    benefits: v.optional(v.array(v.string())),
+    targetAudience: v.optional(v.string()),
+    
+    // Sync tracking
+    lastSyncedAt: v.number(),
+    syncStatus: v.union(
+      v.literal("synced"),
+      v.literal("error"),
+      v.literal("outdated")
+    ),
+    syncError: v.optional(v.string()),
+    
+    // Raw Whop data for debugging
+    rawWhopData: v.optional(v.any()),
+    
+    // Metadata
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_company", ["companyId"])
+    .index("by_whop_product_id", ["whopProductId"])
+    .index("by_whop_company", ["whopCompanyId"])
+    .index("by_company_active", ["companyId", "isActive"])
+    .index("by_company_type", ["companyId", "productType"])
+    .index("by_sync_status", ["syncStatus"])
+    .index("by_last_synced", ["lastSyncedAt"]),
 });

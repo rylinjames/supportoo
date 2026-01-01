@@ -300,9 +300,9 @@ export const generateAIResponse = action({
 
           const agentWhopUserIds = supportAgents
             .filter(
-              (agent) => agent.role === "support" || agent.role === "admin"
+              (agent: any) => agent.role === "support" || agent.role === "admin"
             )
-            .map((agent) => agent.whopUserId);
+            .map((agent: any) => agent.whopUserId);
 
           if (agentWhopUserIds.length > 0 && experienceId) {
             const customer = await ctx.runQuery(api.users.queries.getUserById, {
@@ -338,7 +338,7 @@ export const generateAIResponse = action({
           limit: 1,
         });
 
-        const lastMessage = messages.find((m) => m.role === "customer");
+        const lastMessage = messages.find((m: any) => m.role === "customer");
 
         if (!lastMessage) {
           throw new Error("No customer message found");

@@ -9,10 +9,11 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { CompanyContextTab } from "@/app/components/workspace/company-context-tab";
 import { TemplatesTab } from "./templates-tab";
 import { TeamTab } from "./team-tab";
+import { ProductsTab } from "./products-tab";
 
 export function WorkspaceView() {
   const { userData } = useUser();
-  const [activeTab, setActiveTab] = useState<"context" | "templates" | "team">(
+  const [activeTab, setActiveTab] = useState<"context" | "templates" | "team" | "products">(
     "context"
   );
   const [isLoading, setIsLoading] = useState(true);
@@ -87,6 +88,19 @@ export function WorkspaceView() {
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
               )}
             </button>
+            <button
+              onClick={() => setActiveTab("products")}
+              className={`px-3 py-2 transition-colors relative ${
+                activeTab === "products"
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Products
+              {activeTab === "products" && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -110,6 +124,10 @@ export function WorkspaceView() {
           <CompanyContextTab fullConfig={fullConfig} />
         ) : activeTab === "templates" ? (
           <TemplatesTab
+            companyId={userData!.currentCompanyId as Id<"companies">}
+          />
+        ) : activeTab === "products" ? (
+          <ProductsTab
             companyId={userData!.currentCompanyId as Id<"companies">}
           />
         ) : (

@@ -200,14 +200,17 @@ YOU ARE A CUSTOMER SUPPORT AGENT - YOU MUST ONLY HELP WITH:
 - Pricing, refunds, and subscription management
 - How to use or access purchased products
 - Troubleshooting access or payment issues
+- Questions directly related to content within purchased courses/products
+- Support for features included in their membership
 
 ❌ NOT ALLOWED - MUST DEFLECT:
-- General knowledge questions (history, science, math, etc.)
-- Writing essays, paragraphs, or creative content
-- Coding or programming help (unless it's about using THIS company's API/tools)
-- Personal advice, health, legal, or financial guidance
+- General knowledge questions (history, science, math, etc.) UNLESS directly part of a course they purchased
+- Writing essays, paragraphs, or creative content unrelated to their purchase
+- Free tutoring or consulting beyond what they've paid for
+- Personal advice, health, legal guidance (unless that IS the product)
 - Questions about other companies or competitors
-- Any topic not directly related to customer support for THIS business
+- Providing services for free that the company charges for
+- Any request that circumvents the need to purchase the product
 
 WHEN RECEIVING OFF-TOPIC REQUESTS:
 Respond ONLY with: "I'm here to help with questions about ${company.name || 'our products'} and your Whop membership. For general questions or other topics, I'd recommend using a general-purpose AI assistant like ChatGPT or Claude. How can I help you with your account or our services today?"
@@ -364,24 +367,69 @@ ${company.aiSystemPrompt || ""}`;
       // Get the last user message to check what they asked
       const lastUserMessage = messages[messages.length - 1]?.content?.toLowerCase() || "";
       
-      // List of keywords that indicate off-topic questions
+      // Check company context and products to understand what's relevant
+      const companyContextLower = (companyContext || "").toLowerCase();
+      const productTitlesLower = products.map((p: any) => (p.title || "").toLowerCase());
+      const productDescriptionsLower = products.map((p: any) => (p.description || "").toLowerCase()).join(" ");
+      const allCompanyContent = companyContextLower + " " + productTitlesLower.join(" ") + " " + productDescriptionsLower;
+      
+      // Determine if company is related to certain topics
+      const isCodeRelatedCompany = allCompanyContent.includes('coding') || 
+                                   allCompanyContent.includes('programming') || 
+                                   allCompanyContent.includes('developer') ||
+                                   allCompanyContent.includes('software') ||
+                                   allCompanyContent.includes('api') ||
+                                   allCompanyContent.includes('javascript') ||
+                                   allCompanyContent.includes('python');
+      
+      const isEducationalCompany = allCompanyContent.includes('course') ||
+                                   allCompanyContent.includes('tutorial') ||
+                                   allCompanyContent.includes('education') ||
+                                   allCompanyContent.includes('learning') ||
+                                   allCompanyContent.includes('training');
+      
+      const isFinanceCompany = allCompanyContent.includes('trading') ||
+                               allCompanyContent.includes('investment') ||
+                               allCompanyContent.includes('stocks') ||
+                               allCompanyContent.includes('crypto') ||
+                               allCompanyContent.includes('finance');
+      
+      // Build dynamic off-topic indicators based on what the company does
       const offTopicIndicators = [
-        // Historical figures and events
+        // Always off-topic (unless company specifically deals with these)
         'martin luther king', 'mlk', 'abraham lincoln', 'george washington', 'world war',
-        'civil war', 'revolution', 'historical', 'history of',
-        // Academic subjects
-        'write an essay', 'write a paragraph', 'write about', 'explain the theory',
-        'mathematical proof', 'scientific method', 'literature analysis',
-        // Creative writing
+        'civil war', 'revolution', 'historical figures',
+        // Academic (unless educational company)
+        ...(isEducationalCompany ? [] : ['write an essay', 'write a paragraph about', 'explain the theory']),
+        // Creative writing (always off-topic for support)
         'write a story', 'write a poem', 'creative writing', 'fiction',
-        // Programming (unless about company's API)
-        'write code', 'python script', 'javascript function', 'debug my code',
-        // Personal advice
-        'relationship advice', 'medical advice', 'legal advice', 'investment advice',
-        // General knowledge
-        'capital of', 'population of', 'who invented', 'when was', 'how many',
-        'define', 'what is the meaning of'
+        // Programming (unless code-related company)
+        ...(isCodeRelatedCompany ? [] : ['write code for', 'python script', 'javascript function', 'debug my code']),
+        // Financial advice (unless finance company)
+        ...(isFinanceCompany ? [] : ['investment advice', 'stock tips', 'trading strategy']),
+        // Medical/Legal (always off-topic for support)
+        'medical advice', 'legal advice', 'health diagnosis',
+        // General knowledge (always off-topic)
+        'capital of', 'population of', 'who invented', 'when was the', 'how many countries'
       ];
+      
+      // For code-related companies, only flag if they're asking for unrelated code
+      if (isCodeRelatedCompany && lastUserMessage.includes('code')) {
+        // Check if it's about their purchased product or general coding help
+        const isAboutProduct = lastUserMessage.includes('course') ||
+                              lastUserMessage.includes('access') ||
+                              lastUserMessage.includes('download') ||
+                              lastUserMessage.includes('lesson') ||
+                              lastUserMessage.includes('module') ||
+                              lastUserMessage.includes('purchase');
+        
+        // If asking for code help but NOT about their purchase, still flag it
+        if (!isAboutProduct && (lastUserMessage.includes('write code') || 
+                                lastUserMessage.includes('debug my') ||
+                                lastUserMessage.includes('fix my code'))) {
+          offTopicIndicators.push('requesting free coding help');
+        }
+      }
       
       // Check if user asked an off-topic question
       const isOffTopicRequest = offTopicIndicators.some(indicator => 
@@ -399,10 +447,20 @@ ${company.aiSystemPrompt || ""}`;
         responseCheck.includes('product') ||
         responseCheck.includes('support') ||
         responseCheck.includes('account') ||
-        (company.name && responseCheck.includes(company.name.toLowerCase()));
+        responseCheck.includes('purchase') ||
+        responseCheck.includes('course') ||
+        (company.name && responseCheck.includes(company.name.toLowerCase())) ||
+        productTitlesLower.some(title => title && responseCheck.includes(title));
       
       // If response is long (>500 chars) and doesn't contain relevant terms, it's likely off-topic
       const suspiciouslyOffTopic = response.length > 500 && !containsRelevantTerms;
+      
+      // Log decision making
+      console.log("  - Company type detection:", {
+        isCodeRelated: isCodeRelatedCompany,
+        isEducational: isEducationalCompany,
+        isFinance: isFinanceCompany
+      });
       
       if (isOffTopicRequest || suspiciouslyOffTopic) {
         console.log("⚠️ Off-topic content detected! Replacing with redirect message.");

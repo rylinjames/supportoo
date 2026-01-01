@@ -477,6 +477,10 @@ export function CustomerChatDetail({
               disabled={isSending || isUploading}
               className="w-full min-h-[40px] max-h-[120px] resize-none border-0 text-body-sm px-0 py-0 placeholder:text-body-sm placeholder:text-muted-foreground focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-default"
               rows={1}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck="false"
             />
 
             {/* Image Preview */}

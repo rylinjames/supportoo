@@ -22,6 +22,12 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: "AI Support Chat",
   description: "AI Support Chat",
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
 };
 
 export default function RootLayout({

@@ -7,6 +7,7 @@ import { CustomerChatHeader } from "./customer-chat-header";
 import { CustomerEmptyState } from "./customer-empty-state";
 import { CustomerChatDetail } from "./customer-chat-detail";
 import { MessageListSkeleton } from "../support/message-skeleton";
+import { MobileViewport } from "./mobile-viewport";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
 
@@ -61,6 +62,7 @@ export function CustomerChatView({
 
   return (
     <div className="flex flex-col h-full bg-background">
+      <MobileViewport />
       {/* Always show header on mobile, or when conversation exists on desktop */}
       <CustomerChatHeader
         onRequestHumanSupport={handleRequestHumanSupport}

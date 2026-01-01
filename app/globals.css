@@ -5,6 +5,54 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Prevent iOS zoom on inputs */
+@supports (-webkit-touch-callout: none) {
+  input, 
+  textarea, 
+  select {
+    font-size: 16px !important;
+  }
+  
+  input::placeholder,
+  textarea::placeholder {
+    font-size: 14px !important;
+  }
+}
+
+/* Prevent viewport scaling on mobile */
+@media (max-width: 768px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  
+  body {
+    touch-action: pan-x pan-y;
+  }
+  
+  /* Ensure inputs don't trigger zoom */
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="password"],
+  input[type="search"],
+  textarea,
+  select {
+    font-size: 16px !important;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    border-radius: 0;
+  }
+  
+  /* Keep placeholder text smaller */
+  input::placeholder,
+  textarea::placeholder {
+    font-size: 14px !important;
+  }
+}
+
 :root {
   /* ============================================
      TYPOGRAPHY SYSTEM

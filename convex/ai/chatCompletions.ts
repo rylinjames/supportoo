@@ -190,36 +190,64 @@ When users mention "the platform" or have questions about access, billing, or th
 COMPANY IDENTITY (INTERNAL KNOWLEDGE ONLY):
 ${companyContext}${productsContext}
 
+🚨 CRITICAL SCOPE RESTRICTIONS 🚨
+YOU ARE A CUSTOMER SUPPORT AGENT - YOU MUST ONLY HELP WITH:
+✅ ALLOWED TOPICS:
+- Questions about THIS company's products, services, and features listed above
+- Whop platform issues (memberships, billing, access, Discord/Telegram)
+- Account and order inquiries for THIS specific business
+- Technical support for THIS company's offerings
+- Pricing, refunds, and subscription management
+- How to use or access purchased products
+- Troubleshooting access or payment issues
+
+❌ NOT ALLOWED - MUST DEFLECT:
+- General knowledge questions (history, science, math, etc.)
+- Writing essays, paragraphs, or creative content
+- Coding or programming help (unless it's about using THIS company's API/tools)
+- Personal advice, health, legal, or financial guidance
+- Questions about other companies or competitors
+- Any topic not directly related to customer support for THIS business
+
+WHEN RECEIVING OFF-TOPIC REQUESTS:
+Respond ONLY with: "I'm here to help with questions about ${company.name || 'our products'} and your Whop membership. For general questions or other topics, I'd recommend using a general-purpose AI assistant like ChatGPT or Claude. How can I help you with your account or our services today?"
+
 CRITICAL COMMUNICATION RULES:
-1. ALWAYS respond directly to the customer's LATEST message
-2. Focus on what they just asked - don't repeat previous responses
-3. If they ask for help with something specific, provide that help immediately
-4. ONLY mention your company name in these specific situations:
-   - Your very first greeting to a NEW conversation
-   - When customer EXPLICITLY asks "who do you work for" or similar direct questions
-5. After the initial greeting, DO NOT mention the company name again unless directly asked
-6. Be natural and conversational - talk like a human support agent, not a robot
+1. ALWAYS check if the question is support-related before answering
+2. NEVER provide information outside your support scope
+3. Be helpful but firm about staying on-topic
+4. Redirect off-topic requests immediately with the template above
+5. If unsure whether something is on-topic, err on the side of deflecting
+6. Keep responses brief and focused (max 2-3 sentences for most answers)
 
 Response style:
-- Answer the customer's CURRENT question directly
-- Be helpful and professional
-- Use natural, conversational language
-- Don't repeat information unnecessarily
-- Focus on the customer's actual problem
+- Short, direct answers (1-3 sentences when possible)
+- Only elaborate if troubleshooting requires multiple steps
+- Focus on solving the immediate support issue
+- Professional but friendly tone
 - Never mention being an AI
 
 ${company.aiSystemPrompt || ""}` : 
         `${WHOP_CONTEXT}
 
-You are a helpful customer support assistant. Since no specific company context has been configured yet, I'll do my best to help you with your questions.
+🚨 CRITICAL SCOPE RESTRICTIONS 🚨
+YOU ARE A CUSTOMER SUPPORT AGENT - YOU MUST ONLY HELP WITH:
+✅ ALLOWED TOPICS:
+- Whop platform issues (memberships, billing, access, Discord/Telegram)
+- General customer support inquiries
+- Questions about digital products and subscriptions
 
-If asked who you work for, politely explain that the company information hasn't been set up yet in the Workspace settings.
+❌ NOT ALLOWED - MUST DEFLECT:
+- General knowledge questions (history, science, math, etc.)
+- Writing essays, paragraphs, or creative content
+- Coding or programming help
+- Personal advice, health, legal, or financial guidance
+- Any topic not directly related to Whop or customer support
 
-Response style:
-- Be helpful and professional
-- Use natural, conversational language
-- Focus on understanding and helping with the customer's needs
-- If you need specific company information to answer a question, politely explain that this information needs to be configured in the Workspace tab
+WHEN RECEIVING OFF-TOPIC REQUESTS:
+Respond ONLY with: "I'm here to help with Whop platform questions and customer support. For general questions or other topics, I'd recommend using a general-purpose AI assistant like ChatGPT or Claude. How can I help you with Whop today?"
+
+Note: Company-specific information hasn't been configured yet in the Workspace settings.
 
 ${company.aiSystemPrompt || ""}`;
 
@@ -307,7 +335,7 @@ ${company.aiSystemPrompt || ""}`;
       });
 
       const processingTime = Date.now() - startTime;
-      const response = completion.choices[0]?.message?.content || "";
+      let response = completion.choices[0]?.message?.content || "";
       const usage = completion.usage;
 
       console.log("\n📊 STEP 6: OpenAI Response Received");
@@ -328,6 +356,61 @@ ${company.aiSystemPrompt || ""}`;
       if (!response) {
         console.error("❌ ERROR: No response generated from OpenAI!");
         throw new Error("No response generated from OpenAI");
+      }
+
+      // RESPONSE VALIDATION: Check for off-topic responses
+      console.log("\n🔍 STEP 6.5: Validating response for off-topic content...");
+      
+      // Get the last user message to check what they asked
+      const lastUserMessage = messages[messages.length - 1]?.content?.toLowerCase() || "";
+      
+      // List of keywords that indicate off-topic questions
+      const offTopicIndicators = [
+        // Historical figures and events
+        'martin luther king', 'mlk', 'abraham lincoln', 'george washington', 'world war',
+        'civil war', 'revolution', 'historical', 'history of',
+        // Academic subjects
+        'write an essay', 'write a paragraph', 'write about', 'explain the theory',
+        'mathematical proof', 'scientific method', 'literature analysis',
+        // Creative writing
+        'write a story', 'write a poem', 'creative writing', 'fiction',
+        // Programming (unless about company's API)
+        'write code', 'python script', 'javascript function', 'debug my code',
+        // Personal advice
+        'relationship advice', 'medical advice', 'legal advice', 'investment advice',
+        // General knowledge
+        'capital of', 'population of', 'who invented', 'when was', 'how many',
+        'define', 'what is the meaning of'
+      ];
+      
+      // Check if user asked an off-topic question
+      const isOffTopicRequest = offTopicIndicators.some(indicator => 
+        lastUserMessage.includes(indicator)
+      );
+      
+      // Additional check: If response is too long and doesn't mention company/Whop/products
+      const responseCheck = response.toLowerCase();
+      const containsRelevantTerms = 
+        responseCheck.includes('whop') ||
+        responseCheck.includes('membership') ||
+        responseCheck.includes('subscription') ||
+        responseCheck.includes('billing') ||
+        responseCheck.includes('access') ||
+        responseCheck.includes('product') ||
+        responseCheck.includes('support') ||
+        responseCheck.includes('account') ||
+        (company.name && responseCheck.includes(company.name.toLowerCase()));
+      
+      // If response is long (>500 chars) and doesn't contain relevant terms, it's likely off-topic
+      const suspiciouslyOffTopic = response.length > 500 && !containsRelevantTerms;
+      
+      if (isOffTopicRequest || suspiciouslyOffTopic) {
+        console.log("⚠️ Off-topic content detected! Replacing with redirect message.");
+        console.log("  - Off-topic request:", isOffTopicRequest);
+        console.log("  - Suspiciously off-topic response:", suspiciouslyOffTopic);
+        
+        // Replace with standard deflection message
+        response = `I'm here to help with questions about ${company.name || 'our products'} and your Whop membership. For general questions or other topics, I'd recommend using a general-purpose AI assistant like ChatGPT or Claude. How can I help you with your account or our services today?`;
       }
 
       // 6. Check for handoff triggers
@@ -519,15 +602,16 @@ You are a customer support representative. Your responses should be:
 });
 
 // Helper function to get max tokens based on response length setting
+// Reduced token limits to keep responses focused on support
 function getMaxTokens(responseLength: string): number {
   switch (responseLength) {
     case "short":
-      return 150;
+      return 100;  // Was 150
     case "medium":
-      return 300;
+      return 200;  // Was 300
     case "long":
-      return 500;
+      return 350;  // Was 500
     default:
-      return 300;
+      return 200;  // Was 300
   }
 }

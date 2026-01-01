@@ -47,40 +47,55 @@ export const syncProducts = action({
       );
       console.log(`[syncProducts] Marked ${outdatedCount} existing products as outdated`);
 
-      // Fetch products from Whop
+      // Fetch plans (products) from Whop using GraphQL-based API
       let allProducts = [];
       let hasMore = true;
-      let page = 1;
+      let cursor: string | null = null;
       
       while (hasMore) {
         try {
-          console.log(`[syncProducts] Fetching page ${page} of products...`);
+          console.log(`[syncProducts] Fetching plans/products with cursor:`, cursor);
           
-          // Fetch products for this company
-          // Note: The exact API endpoint may vary based on Whop SDK version
-          // @ts-ignore - listProducts method exists on Whop SDK
-          const response = await whopSdk.companies.listProducts({
+          // Fetch plans for this company - Whop calls products "plans"
+          const response = await whopSdk.companies.listPlans({
             companyId: company.whopCompanyId,
-            page: page,
-            per: 50, // Adjust based on Whop API limits
+            first: 50, // Get first 50 items
+            after: cursor || undefined, // Use cursor for pagination
           });
 
-          if (response.data && response.data.length > 0) {
-            allProducts.push(...response.data);
-            page++;
+          console.log(`[syncProducts] Response from listPlans:`, {
+            hasResponse: !!response,
+            hasPlans: !!response?.plans,
+            nodeCount: response?.plans?.nodes?.length || 0,
+            hasNextPage: response?.plans?.pageInfo?.hasNextPage
+          });
+
+          if (response && response.plans && response.plans.nodes) {
+            const plans = response.plans.nodes.filter(Boolean); // Remove any null entries
             
-            // Check if there are more pages
-            hasMore = response.data.length === 50; // If we got a full page, there might be more
+            if (plans.length > 0) {
+              allProducts.push(...plans);
+              
+              // Check if there are more pages
+              if (response.plans.pageInfo?.hasNextPage && response.plans.pageInfo?.endCursor) {
+                cursor = response.plans.pageInfo.endCursor;
+                hasMore = true;
+              } else {
+                hasMore = false;
+              }
+            } else {
+              hasMore = false;
+            }
           } else {
             hasMore = false;
           }
         } catch (error) {
-          console.error(`[syncProducts] Error fetching page ${page}:`, error);
+          console.error(`[syncProducts] Error fetching plans:`, error);
           // If it's a 404 or "no products" error, break the loop
           if (error instanceof Error && 
               (error.message.includes('404') || 
                error.message.includes('not found') ||
-               error.message.includes('no products'))) {
+               error.message.includes('no plans'))) {
             hasMore = false;
             break;
           }
@@ -105,12 +120,14 @@ export const syncProducts = action({
       const errors: string[] = [];
 
       for (const whopProduct of allProducts) {
+        if (!whopProduct) continue; // Skip null entries
+        
         try {
           const productId = await syncSingleProduct(ctx, companyId, whopProduct);
           syncedProductIds.push(whopProduct.id);
           console.log(`[syncProducts] Synced product: ${whopProduct.id} -> ${productId}`);
         } catch (error) {
-          const errorMsg = `Failed to sync product ${whopProduct.id}: ${error instanceof Error ? error.message : String(error)}`;
+          const errorMsg = `Failed to sync product ${whopProduct?.id || 'unknown'}: ${error instanceof Error ? error.message : String(error)}`;
           errors.push(errorMsg);
           console.error(`[syncProducts] ${errorMsg}`);
         }
@@ -339,23 +356,24 @@ export const testWhopConnection = action({
 
       const whopSdk = getWhopSdk();
 
-      // Try to fetch just one page of products to test connection
-      // @ts-ignore - listProducts method exists on Whop SDK
-      const response = await whopSdk.companies.listProducts({
+      // Try to fetch just a few plans to test connection
+      const response = await whopSdk.companies.listPlans({
         companyId: company.whopCompanyId,
-        page: 1,
-        per: 5,
+        first: 5, // Get first 5 items to test
       });
+
+      const planCount = response?.plans?.nodes?.length || 0;
+      const plans = response?.plans?.nodes?.filter(Boolean) || [];
 
       return {
         success: true,
-        message: `Successfully connected to Whop. Found ${response.data?.length || 0} products (showing first 5).`,
-        sampleProducts: response.data?.map((p: any) => ({
+        message: `Successfully connected to Whop. Found ${planCount} products/plans.`,
+        sampleProducts: plans.map((p: any) => ({
           id: p.id,
-          title: p.title || p.name,
-          type: p.category || p.type,
-          price: p.price,
-        })) || [],
+          title: p.title || p.name || "Untitled",
+          type: p.category || p.type || "plan",
+          price: p.price || 0,
+        })),
       };
 
     } catch (error) {

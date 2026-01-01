@@ -280,8 +280,8 @@ function extractFeaturesFromText(description: string | undefined): string[] {
     features.push(...bulletPoints.map(point => point.replace(/[•\-\*]\s*/, "").trim()));
   }
   
-  // Look for "Features:" section
-  const featuresMatch = description.match(/features?:\s*\n?(.*?)(?:\n\n|benefits?:|$)/is);
+  // Look for "Features:" section - using case-insensitive flag only
+  const featuresMatch = description.match(/features?:\s*\n?(.*?)(?:\n\n|benefits?:|$)/i);
   if (featuresMatch && featuresMatch[1]) {
     const featureLines = featuresMatch[1]
       .split('\n')
@@ -302,8 +302,8 @@ function extractBenefitsFromText(description: string | undefined): string[] {
   
   const benefits: string[] = [];
   
-  // Look for "Benefits:" section
-  const benefitsMatch = description.match(/benefits?:\s*\n?(.*?)(?:\n\n|features?:|$)/is);
+  // Look for "Benefits:" section - using case-insensitive flag only
+  const benefitsMatch = description.match(/benefits?:\s*\n?(.*?)(?:\n\n|features?:|$)/i);
   if (benefitsMatch && benefitsMatch[1]) {
     const benefitLines = benefitsMatch[1]
       .split('\n')

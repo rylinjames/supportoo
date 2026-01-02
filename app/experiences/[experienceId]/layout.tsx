@@ -170,11 +170,7 @@ const Layout = ({ children }: LayoutProps) => {
               className="hidden xl:flex h-screen overflow-hidden"
             >
               <Sidebar
-                userType={
-                  currentUser?.userCompanies.find(
-                    (uc) => uc.companyId === currentUser.currentCompanyId
-                  )?.role || "customer"
-                }
+                userType="admin"  // TEMPORARILY: Force admin to show all navigation
                 user={currentUser}
               />
               <div className="flex-1 overflow-hidden bg-background">

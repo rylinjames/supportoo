@@ -114,21 +114,24 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     // Build redirect URLs
     const baseUrl = `/experiences/${experienceId}`;
 
-    if (role === "customer") {
-      const customerId = searchParams.get("customerId");
-      const expectedCustomerId = userData.user._id;
+    // TEMPORARILY DISABLED: Allow customers to access admin dashboard for testing
+    // if (role === "customer") {
+    //   const customerId = searchParams.get("customerId");
+    //   const expectedCustomerId = userData.user._id;
 
-      if (
-        routeWithoutQuery !== "/customer-view" ||
-        customerId !== expectedCustomerId
-      ) {
-        // Redirect to customer view with correct customerId
-        router.replace(
-          `${baseUrl}/customer-view?customerId=${expectedCustomerId}`
-        );
-        return;
-      }
-    } else if (role === "support") {
+    //   if (
+    //     routeWithoutQuery !== "/customer-view" ||
+    //     customerId !== expectedCustomerId
+    //   ) {
+    //     // Redirect to customer view with correct customerId
+    //     router.replace(
+    //       `${baseUrl}/customer-view?customerId=${expectedCustomerId}`
+    //     );
+    //     return;
+    //   }
+    // }
+    
+    if (role === "support") {
       const supportAllowedRoutes = ["/", "/settings", "/customer-test", "/workspace"];
       if (!supportAllowedRoutes.includes(routeWithoutQuery)) {
         // Redirect to support dashboard (root)

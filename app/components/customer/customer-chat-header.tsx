@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreVertical, Settings, User, Sun, Moon, Monitor } from "lucide-react";
+import { MoreVertical, Settings, User, Sun, Moon, Monitor, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -87,6 +87,21 @@ export function CustomerChatHeader({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              
+              {/* Admin Dashboard Button - Only show if user is admin */}
+              {userData?.userCompanies?.[0]?.role === "admin" && (
+                <>
+                  <DropdownMenuItem 
+                    onClick={() => router.push(`/experiences/${experienceId}`)}
+                    className="text-orange-500 font-medium"
+                  >
+                    <Shield className="h-4 w-4 mr-2" />
+                    Admin Dashboard
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              
               <DropdownMenuItem onClick={onRequestHumanSupport}>
                 Request Human Support
               </DropdownMenuItem>

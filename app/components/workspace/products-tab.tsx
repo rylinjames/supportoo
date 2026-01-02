@@ -22,18 +22,15 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<any>(null);
 
-  // Query products - will be enabled once API is generated
-  // const products = useQuery(
-  //   api.products.queries.getCompanyProducts,
-  //   { companyId }
-  // );
+  // Query products
+  const products = useQuery(
+    api.products.queries.getCompanyProducts,
+    { companyId }
+  );
 
-  // Temporarily use empty array until products API is available
-  const products: any[] = [];
-
-  // Actions - will be enabled once API is generated
-  // const syncProducts = useAction(api.products.actions.syncProducts);
-  // const testConnection = useAction(api.products.actions.testWhopConnection);
+  // Actions
+  const syncProducts = useAction(api.products.actions.syncProducts);
+  const testConnection = useAction(api.products.actions.testWhopConnection);
 
   const handleSyncProducts = async () => {
     if (isSyncing) return;
@@ -41,17 +38,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     setIsSyncing(true);
     
     try {
-      // TODO: Enable when API is available
-      // const result = await syncProducts({ companyId });
-      
-      // Simulate sync for now
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const result = {
-        success: true,
-        syncedCount: 0,
-        deletedCount: 0,
-        errors: [],
-      };
+      const result = await syncProducts({ companyId });
       
       setLastSyncResult(result);
       
@@ -73,15 +60,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
 
   const handleTestConnection = async () => {
     try {
-      // TODO: Enable when API is available
-      // const result = await testConnection({ companyId });
-      
-      // Simulate test for now
-      const result = {
-        success: true,
-        message: "Connection test not yet available (products API not generated)",
-        sampleProducts: [],
-      };
+      const result = await testConnection({ companyId });
       
       if (result.success) {
         toast.success(result.message);

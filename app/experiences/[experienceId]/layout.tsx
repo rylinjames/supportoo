@@ -104,10 +104,11 @@ const Layout = ({ children }: LayoutProps) => {
         if (previousUserIdRef.current === userId) {
           setCurrentUser(res.userData);
 
-          // Handle redirect if provided
-          if (res.redirectTo) {
-            router.push(res.redirectTo);
-          }
+          // Disable automatic redirects to allow users to navigate freely
+          // Users can manually navigate using the Admin Dashboard button
+          // if (res.redirectTo) {
+          //   router.push(res.redirectTo);
+          // }
         }
       } catch (error) {
         setError(`Error authenticating user: ${error}`);

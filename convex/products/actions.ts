@@ -9,7 +9,7 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { api } from "../_generated/api";
-import { getWhopSdk } from "../lib/whop";
+import { getWhopConfig } from "../lib/whop";
 
 /**
  * Sync all products from Whop for a company
@@ -37,8 +37,8 @@ export const syncProducts = action({
 
       console.log(`[syncProducts] Fetching products for Whop company: ${company.whopCompanyId}`);
 
-      // Get Whop SDK
-      const whopSdk = getWhopSdk();
+      // Get Whop API credentials
+      const { apiKey } = getWhopConfig();
 
       // Mark all existing products as outdated before sync
       const outdatedCount = await ctx.runMutation(
@@ -47,58 +47,66 @@ export const syncProducts = action({
       );
       console.log(`[syncProducts] Marked ${outdatedCount} existing products as outdated`);
 
-      // Fetch plans (products) from Whop using GraphQL-based API
+      // Fetch products from Whop using v2 REST API (which actually works)
       let allProducts = [];
-      let hasMore = true;
-      let cursor: string | null = null;
       
-      while (hasMore) {
-        try {
-          console.log(`[syncProducts] Fetching plans/products with cursor:`, cursor);
+      try {
+        console.log(`[syncProducts] Fetching products using v2 API for company: ${company.whopCompanyId}`);
+        
+        let page = 1;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const url = `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=${page}&per_page=50`;
           
-          // Fetch plans for this company - Whop calls products "plans"
-          const response = await whopSdk.companies.listPlans({
-            companyId: company.whopCompanyId,
-            first: 50, // Get first 50 items
-            after: cursor || undefined, // Use cursor for pagination
-          });
-
-          console.log(`[syncProducts] Response from listPlans:`, {
-            hasResponse: !!response,
-            hasPlans: !!response?.plans,
-            nodeCount: response?.plans?.nodes?.length || 0,
-            hasNextPage: response?.plans?.pageInfo?.hasNextPage
-          });
-
-          if (response && response.plans && response.plans.nodes) {
-            const plans = response.plans.nodes.filter(Boolean); // Remove any null entries
-            
-            if (plans.length > 0) {
-              allProducts.push(...plans);
-              
-              // Check if there are more pages
-              if (response.plans.pageInfo?.hasNextPage && response.plans.pageInfo?.endCursor) {
-                cursor = response.plans.pageInfo.endCursor;
-                hasMore = true;
-              } else {
-                hasMore = false;
-              }
-            } else {
-              hasMore = false;
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Accept': 'application/json',
             }
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[syncProducts] API error:`, errorText);
+            break;
+          }
+          
+          const data = await response.json();
+          
+          if (data.data && Array.isArray(data.data)) {
+            allProducts.push(...data.data);
+            console.log(`[syncProducts] Fetched ${data.data.length} products from page ${page}`);
+          }
+          
+          // Check if there are more pages
+          if (data.pagination && page < data.pagination.total_page) {
+            page++;
+            hasMore = true;
           } else {
             hasMore = false;
           }
-        } catch (error) {
-          console.error(`[syncProducts] Error fetching plans:`, error);
-          // If it's a 404 or "no products" error, break the loop
-          if (error instanceof Error && 
-              (error.message.includes('404') || 
-               error.message.includes('not found') ||
-               error.message.includes('no plans'))) {
-            hasMore = false;
+          
+          // Safety limit to prevent infinite loops
+          if (page > 20) {
+            console.log(`[syncProducts] Reached page limit of 20`);
             break;
           }
+        }
+        
+        console.log(`[syncProducts] Total products fetched: ${allProducts.length}`);
+        
+      } catch (error) {
+        console.error(`[syncProducts] Error fetching products:`, error);
+        
+        // Don't throw on empty response - this is expected if no products exist
+        if (error instanceof Error && 
+            (error.message.includes('404') || 
+             error.message.includes('not found') ||
+             error.message.includes('no products'))) {
+          console.log(`[syncProducts] No products found`);
+        } else {
           throw error; // Re-throw other errors
         }
       }
@@ -354,25 +362,34 @@ export const testWhopConnection = action({
         throw new Error("No Whop company ID found");
       }
 
-      const whopSdk = getWhopSdk();
+      const { apiKey } = getWhopConfig();
 
-      // Try to fetch just a few plans to test connection
-      const response = await whopSdk.companies.listPlans({
-        companyId: company.whopCompanyId,
-        first: 5, // Get first 5 items to test
+      // Try to fetch products using v2 API to test connection
+      const url = `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=1&per_page=5`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+        }
       });
-
-      const planCount = response?.plans?.nodes?.length || 0;
-      const plans = response?.plans?.nodes?.filter(Boolean) || [];
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      const products = data.data || [];
 
       return {
         success: true,
-        message: `Successfully connected to Whop. Found ${planCount} products/plans.`,
-        sampleProducts: plans.map((p: any) => ({
+        message: `Successfully connected to Whop. Found ${products.length} products (total: ${data.pagination?.total_count || 0}).`,
+        sampleProducts: products.map((p: any) => ({
           id: p.id,
           title: p.title || p.name || "Untitled",
-          type: p.category || p.type || "plan",
-          price: p.price || 0,
+          type: p.product_type || p.type || "product",
+          visible: p.visibility || "unknown",
         })),
       };
 

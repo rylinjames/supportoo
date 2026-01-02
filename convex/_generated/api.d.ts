@@ -49,6 +49,7 @@ import type * as simulate from "../simulate.js";
 import type * as templates_mutations from "../templates/mutations.js";
 import type * as templates_queries from "../templates/queries.js";
 import type * as templates_utils from "../templates/utils.js";
+import type * as test_testProducts from "../test/testProducts.js";
 import type * as uploadthing_actions from "../uploadthing/actions.js";
 import type * as uploadthing_config from "../uploadthing/config.js";
 import type * as usage_actions from "../usage/actions.js";
@@ -124,6 +125,7 @@ declare const fullApi: ApiFromModules<{
   "templates/mutations": typeof templates_mutations;
   "templates/queries": typeof templates_queries;
   "templates/utils": typeof templates_utils;
+  "test/testProducts": typeof test_testProducts;
   "uploadthing/actions": typeof uploadthing_actions;
   "uploadthing/config": typeof uploadthing_config;
   "usage/actions": typeof usage_actions;

@@ -88,19 +88,15 @@ export function CustomerChatHeader({
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               
-              {/* Admin Dashboard Button - Only show if user is admin */}
-              {userData?.userCompanies?.[0]?.role === "admin" && (
-                <>
-                  <DropdownMenuItem 
-                    onClick={() => router.push(`/experiences/${experienceId}`)}
-                    className="text-orange-500 font-medium"
-                  >
-                    <Shield className="h-4 w-4 mr-2" />
-                    Admin Dashboard
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
+              {/* Admin Dashboard Button - Temporarily visible to all for testing */}
+              <DropdownMenuItem 
+                onClick={() => router.push(`/experiences/${experienceId}`)}
+                className="text-orange-500 font-medium"
+              >
+                <Shield className="h-4 w-4 mr-2" />
+                Admin Dashboard
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               
               <DropdownMenuItem onClick={onRequestHumanSupport}>
                 Request Human Support

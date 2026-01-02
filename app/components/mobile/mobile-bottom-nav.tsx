@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquare, Settings as SettingsIcon, Eye } from "lucide-react";
+import { MessageSquare, Settings as SettingsIcon, Eye, FolderOpen } from "lucide-react";
 import { usePathname, useRouter, useParams } from "next/navigation";
 import { useUser } from "@/app/contexts/user-context";
 
@@ -16,10 +16,11 @@ export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
   const experienceId = params?.experienceId as string;
   const { userData } = useUser();
 
+  // TEMPORARILY: Show nav for all users
   // Customer has no bottom nav - they use the 3-dots menu in chat header
-  if (userType === "customer") {
-    return null;
-  }
+  // if (userType === "customer") {
+  //   return null;
+  // }
 
   // Support navigation items
   const supportNavItems = [
@@ -44,6 +45,12 @@ export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
       icon: MessageSquare,
       label: "Support",
       route: "/",
+    },
+    {
+      id: "workspace",
+      icon: FolderOpen,
+      label: "Workspace",
+      route: "/workspace",
     },
     // Only show Customer View in development mode
     ...(process.env.NODE_ENV === "development"

@@ -191,12 +191,12 @@ const Layout = ({ children }: LayoutProps) => {
                   currentUser?.userCompanies.find(
                     (uc) => uc.companyId === currentUser.currentCompanyId
                   )?.role || "customer";
-                // Only show bottom nav for admin and support, not customers
-                if (userRole === "customer") {
-                  return null;
-                }
+                // TEMPORARILY: Show bottom nav for all users including customers
+                // if (userRole === "customer") {
+                //   return null;
+                // }
                 return (
-                  <MobileBottomNav userType={userRole} user={currentUser} />
+                  <MobileBottomNav userType="admin" user={currentUser} />
                 );
               })()}
             </div>

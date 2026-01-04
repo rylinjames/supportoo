@@ -18,7 +18,7 @@ interface ProductsTabProps {
 }
 
 export function ProductsTab({ companyId }: ProductsTabProps) {
-  const { userData } = useUser();
+  const { userData, userToken } = useUser();
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<any>(null);
 
@@ -34,14 +34,35 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
 
   const handleSyncProducts = async () => {
     if (isSyncing) return;
-    
+
     setIsSyncing(true);
-    
+
+    // Log sync details for debugging multi-tenancy
+    console.log("========================================");
+    console.log("🔄 PRODUCT SYNC INITIATED FROM UI");
+    console.log("----------------------------------------");
+    console.log("Company ID:", companyId);
+    console.log("Has User Token:", !!userToken);
+    console.log("Token Preview:", userToken ? `${userToken.substring(0, 20)}...` : "NONE");
+    console.log("----------------------------------------");
+
     try {
-      const result = await syncProducts({ companyId });
+      // Pass the user token for proper multi-tenant product fetching
+      const result = await syncProducts({ companyId, userToken });
       
       setLastSyncResult(result);
-      
+
+      // Log sync results for debugging
+      console.log("----------------------------------------");
+      console.log("📦 SYNC RESULTS:");
+      console.log("Success:", result.success);
+      console.log("Products Synced:", result.syncedCount);
+      console.log("Products Deleted:", result.deletedCount);
+      if (result.errors?.length > 0) {
+        console.log("Errors:", result.errors);
+      }
+      console.log("========================================");
+
       if (result.success) {
         toast.success(
           `Successfully synced ${result.syncedCount} products` +
@@ -52,6 +73,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
       }
     } catch (error) {
       console.error("Sync failed:", error);
+      console.log("========================================");
       toast.error(`Sync failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setIsSyncing(false);
@@ -60,10 +82,15 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
 
   const handleTestConnection = async () => {
     try {
-      const result = await testConnection({ companyId });
-      
+      // Pass the user token for proper multi-tenant product fetching
+      const result = await testConnection({ companyId, userToken });
+
       if (result.success) {
         toast.success(result.message);
+        // Log sample products to console for debugging
+        console.log("[testConnection] Sample products:", result.sampleProducts);
+        console.log("[testConnection] Token type used:", result.tokenType);
+        console.log("[testConnection] Company ID:", result.companyId);
       } else {
         toast.error(result.message);
       }

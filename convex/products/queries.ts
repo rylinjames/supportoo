@@ -44,16 +44,20 @@ export const getActiveProducts = query({
 });
 
 /**
- * Get a specific product by Whop product ID
+ * Get a specific product by Whop product ID for a specific company
+ * (Multi-tenant safe - requires companyId to prevent cross-company data leakage)
  */
 export const getProductByWhopId = query({
   args: {
+    companyId: v.id("companies"),
     whopProductId: v.string(),
   },
-  handler: async (ctx, { whopProductId }) => {
+  handler: async (ctx, { companyId, whopProductId }) => {
     const product = await ctx.db
       .query("products")
-      .withIndex("by_whop_product_id", (q) => q.eq("whopProductId", whopProductId))
+      .withIndex("by_company_whop_product", (q) =>
+        q.eq("companyId", companyId).eq("whopProductId", whopProductId)
+      )
       .first();
 
     return product;

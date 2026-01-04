@@ -663,6 +663,7 @@ export default defineSchema({
   })
     .index("by_company", ["companyId"])
     .index("by_whop_product_id", ["whopProductId"])
+    .index("by_company_whop_product", ["companyId", "whopProductId"]) // Compound index for multi-tenant isolation
     .index("by_whop_company", ["whopCompanyId"])
     .index("by_company_active", ["companyId", "isActive"])
     .index("by_company_type", ["companyId", "productType"])

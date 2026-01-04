@@ -13,13 +13,18 @@ import { getWhopConfig } from "../lib/whop";
 
 /**
  * Sync all products from Whop for a company
+ *
+ * IMPORTANT: The userToken parameter should be passed when syncing products
+ * for companies OTHER than the app owner's company. The App API key only
+ * has direct access to products owned by the app owner.
  */
 export const syncProducts = action({
   args: {
     companyId: v.id("companies"),
+    userToken: v.optional(v.string()), // User's JWT token for API calls on their behalf
   },
-  handler: async (ctx, { companyId }): Promise<any> => {
-    console.log(`[syncProducts] Starting sync for company: ${companyId}`);
+  handler: async (ctx, { companyId, userToken }): Promise<any> => {
+    console.log(`[syncProducts] Starting sync for company: ${companyId}, hasUserToken: ${!!userToken}`);
     
     try {
       // Get company data to find Whop company ID
@@ -40,6 +45,13 @@ export const syncProducts = action({
       // Get Whop API credentials
       const { apiKey } = getWhopConfig();
 
+      // Determine which token to use:
+      // - If userToken is provided, use it (for accessing products of companies that installed the app)
+      // - Otherwise fall back to appApiKey (only works for app owner's company)
+      const authToken = userToken || apiKey;
+      const tokenType = userToken ? 'user_token' : 'app_api_key';
+      console.log(`[syncProducts] Using ${tokenType} for API authentication`);
+
       // Mark all existing products as outdated before sync
       const outdatedCount = await ctx.runMutation(
         api.products.mutations.markProductsAsOutdated,
@@ -47,22 +59,36 @@ export const syncProducts = action({
       );
       console.log(`[syncProducts] Marked ${outdatedCount} existing products as outdated`);
 
-      // Fetch products from Whop using v2 REST API (which actually works)
+      // Fetch products from Whop API
       let allProducts = [];
-      
+
       try {
-        console.log(`[syncProducts] Fetching products using v2 API for company: ${company.whopCompanyId}`);
-        
+        console.log(`[syncProducts] ========================================`);
+        console.log(`[syncProducts] 🔄 PRODUCT SYNC STARTED`);
+        console.log(`[syncProducts] ----------------------------------------`);
+        console.log(`[syncProducts] Company Name: ${company.name}`);
+        console.log(`[syncProducts] Company ID (Convex): ${companyId}`);
+        console.log(`[syncProducts] Company ID (Whop): ${company.whopCompanyId}`);
+        console.log(`[syncProducts] Auth Method: ${tokenType.toUpperCase()}`);
+        console.log(`[syncProducts] Has User Token: ${!!userToken}`);
+        console.log(`[syncProducts] ----------------------------------------`);
+
         let page = 1;
         let hasMore = true;
-        
+
         while (hasMore) {
-          const url = `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=${page}&per_page=50`;
-          
+          // When using user token, use /v5/me/products to get products the user's company owns
+          // When using app API key, we filter by company_id (note: this may only work for app owner's company)
+          const url = userToken
+            ? `https://api.whop.com/api/v5/me/products?page=${page}&per=${50}`
+            : `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=${page}&per_page=50`;
+
+          console.log(`[syncProducts] Fetching from: ${url}`);
+
           const response = await fetch(url, {
             method: 'GET',
             headers: {
-              'Authorization': `Bearer ${apiKey}`,
+              'Authorization': `Bearer ${authToken}`,
               'Accept': 'application/json',
             }
           });
@@ -80,8 +106,9 @@ export const syncProducts = action({
             console.log(`[syncProducts] Fetched ${data.data.length} products from page ${page}`);
           }
           
-          // Check if there are more pages
-          if (data.pagination && page < data.pagination.total_page) {
+          // Check if there are more pages (handle both v2 and v5 API formats)
+          const totalPages = data.pagination?.total_pages || data.pagination?.total_page || 1;
+          if (data.pagination && page < totalPages) {
             page++;
             hasMore = true;
           } else {
@@ -95,7 +122,30 @@ export const syncProducts = action({
           }
         }
         
+        console.log(`[syncProducts] ----------------------------------------`);
         console.log(`[syncProducts] Total products fetched: ${allProducts.length}`);
+
+        // Log company IDs of fetched products to verify multi-tenancy
+        if (allProducts.length > 0) {
+          const companyIds = [...new Set(allProducts.map((p: any) => p.company_id || p.companyId || 'unknown'))];
+          console.log(`[syncProducts] 🏢 Product Company IDs: ${companyIds.join(', ')}`);
+          console.log(`[syncProducts] Expected Company ID: ${company.whopCompanyId}`);
+
+          const allMatch = companyIds.every(id => id === company.whopCompanyId);
+          if (allMatch) {
+            console.log(`[syncProducts] ✅ MULTI-TENANCY CHECK PASSED - All products belong to correct company`);
+          } else {
+            console.log(`[syncProducts] ⚠️ MULTI-TENANCY WARNING - Some products may belong to different companies`);
+            console.log(`[syncProducts] This is expected when using app_api_key without user_token`);
+          }
+
+          // Log first 3 products for debugging
+          console.log(`[syncProducts] Sample products:`);
+          allProducts.slice(0, 3).forEach((p: any, i: number) => {
+            console.log(`[syncProducts]   ${i + 1}. "${p.title || p.name}" (company: ${p.company_id || p.companyId})`);
+          });
+        }
+        console.log(`[syncProducts] ========================================`);
         
       } catch (error) {
         console.error(`[syncProducts] Error fetching products:`, error);
@@ -347,8 +397,9 @@ function extractBenefitsFromText(description: string | undefined): string[] {
 export const testWhopConnection = action({
   args: {
     companyId: v.id("companies"),
+    userToken: v.optional(v.string()),
   },
-  handler: async (ctx, { companyId }): Promise<any> => {
+  handler: async (ctx, { companyId, userToken }): Promise<any> => {
     try {
       const company: any = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId,
@@ -363,13 +414,20 @@ export const testWhopConnection = action({
       }
 
       const { apiKey } = getWhopConfig();
+      const authToken = userToken || apiKey;
+      const tokenType = userToken ? 'user_token' : 'app_api_key';
 
-      // Try to fetch products using v2 API to test connection
-      const url = `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=1&per_page=5`;
-      
+      // Try to fetch products using appropriate API based on token type
+      // Use /v5/me/products with user token to get products the user's company owns
+      const url = userToken
+        ? `https://api.whop.com/api/v5/me/products?page=1&per=5`
+        : `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=1&per_page=5`;
+
+      console.log(`[testWhopConnection] Using ${tokenType}, URL: ${url}`);
+
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${authToken}`,
           'Accept': 'application/json',
         }
       });
@@ -384,12 +442,15 @@ export const testWhopConnection = action({
 
       return {
         success: true,
-        message: `Successfully connected to Whop. Found ${products.length} products (total: ${data.pagination?.total_count || 0}).`,
+        message: `Successfully connected to Whop using ${tokenType}. Found ${products.length} products (total: ${data.pagination?.total_count || 0}).`,
+        tokenType,
+        companyId: company.whopCompanyId,
         sampleProducts: products.map((p: any) => ({
           id: p.id,
           title: p.title || p.name || "Untitled",
           type: p.product_type || p.type || "product",
           visible: p.visibility || "unknown",
+          company_id: p.company_id || p.companyId || "unknown",
         })),
       };
 

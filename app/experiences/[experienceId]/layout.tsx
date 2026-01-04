@@ -44,6 +44,7 @@ const Layout = ({ children }: LayoutProps) => {
   const [currentUser, setCurrentUser] = useState<UserData | undefined>(
     undefined
   );
+  const [userToken, setUserToken] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | undefined>(undefined);
   const previousUserIdRef = useRef<string | null>(null);
@@ -59,13 +60,17 @@ const Layout = ({ children }: LayoutProps) => {
       setError(undefined);
 
       try {
-        const { userId, userToken } = await verifyUserToken();
+        const { userId, userToken: token } = await verifyUserToken();
         if (!userId) {
           setError("Error authenticating user:");
           setCurrentUser(undefined);
+          setUserToken(undefined);
           previousUserIdRef.current = null;
           return;
         }
+
+        // Store the user token for later use (e.g., product sync)
+        setUserToken(token);
 
         // Check if userId has changed - if so, force complete reset
         if (
@@ -85,7 +90,7 @@ const Layout = ({ children }: LayoutProps) => {
         const res = await onboardUser({
           whopUserId: userId,
           experienceId: experienceId,
-          userToken: userToken, // Pass user token for API calls
+          userToken: token, // Pass user token for API calls
         });
 
         if (!res.success) {
@@ -114,6 +119,7 @@ const Layout = ({ children }: LayoutProps) => {
       } catch (error) {
         setError(`Error authenticating user: ${error}`);
         setCurrentUser(undefined);
+        setUserToken(undefined);
         previousUserIdRef.current = null;
         return;
       } finally {
@@ -125,6 +131,7 @@ const Layout = ({ children }: LayoutProps) => {
     // Cleanup on unmount
     return () => {
       setCurrentUser(undefined);
+      setUserToken(undefined);
       setError(undefined);
       previousUserIdRef.current = null;
     };
@@ -160,6 +167,7 @@ const Layout = ({ children }: LayoutProps) => {
       <WhopPaymentsProvider>
         <UserProvider
           userData={currentUser}
+          userToken={userToken}
           isLoading={isLoading}
           error={error}
         >

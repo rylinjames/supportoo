@@ -488,10 +488,12 @@ export const onboardUser = action({
             console.log(`[onboardUser] Syncing products for new company: ${company._id}`);
             try {
               // Run product sync in background (don't block onboarding)
+              // Pass userToken for proper multi-tenant product fetching
               ctx.scheduler.runAfter(0, api.products.actions.syncProducts, {
                 companyId: company._id,
+                userToken: userToken,
               });
-              console.log(`[onboardUser] Product sync scheduled for company: ${company._id}`);
+              console.log(`[onboardUser] Product sync scheduled for company: ${company._id} with userToken: ${!!userToken}`);
             } catch (syncError) {
               // Don't fail onboarding if product sync fails
               console.error(`[onboardUser] Failed to schedule product sync:`, syncError);

@@ -51,10 +51,13 @@ export const upsertProduct = mutation({
   handler: async (ctx, args) => {
     const now = Date.now();
 
-    // Check if product already exists
+    // Check if product already exists FOR THIS COMPANY (multi-tenant isolation)
+    // Using compound index to ensure each company has its own copy of products
     const existingProduct = await ctx.db
       .query("products")
-      .withIndex("by_whop_product_id", (q) => q.eq("whopProductId", args.whopProductId))
+      .withIndex("by_company_whop_product", (q) =>
+        q.eq("companyId", args.companyId).eq("whopProductId", args.whopProductId)
+      )
       .first();
 
     const productData = {

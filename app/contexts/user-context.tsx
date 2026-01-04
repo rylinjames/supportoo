@@ -29,6 +29,7 @@ interface UserData {
 
 interface UserContextType {
   userData: UserData | undefined;
+  userToken: string | undefined;
   isLoading: boolean;
   error: string | undefined;
   switchCompany: (companyId: string) => void;
@@ -40,6 +41,7 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 interface UserProviderProps {
   children: ReactNode;
   userData: UserData | undefined;
+  userToken: string | undefined;
   isLoading: boolean;
   error: string | undefined;
 }
@@ -47,6 +49,7 @@ interface UserProviderProps {
 export function UserProvider({
   children,
   userData,
+  userToken,
   isLoading,
   error,
 }: UserProviderProps) {
@@ -71,6 +74,7 @@ export function UserProvider({
     <UserContext.Provider
       value={{
         userData,
+        userToken,
         isLoading,
         error,
         switchCompany,

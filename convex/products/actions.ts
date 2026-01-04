@@ -1,14 +1,14 @@
 /**
  * Products Actions
- * 
+ *
  * Actions for syncing products from Whop API
  */
 
 "use node";
 
 import { v } from "convex/values";
-import { action } from "../_generated/server";
-import { api } from "../_generated/api";
+import { action, internalAction } from "../_generated/server";
+import { api, internal } from "../_generated/api";
 import { getWhopConfig } from "../lib/whop";
 
 /**
@@ -398,6 +398,81 @@ export const testWhopConnection = action({
         success: false,
         message: `Failed to connect to Whop: ${error instanceof Error ? error.message : String(error)}`,
         sampleProducts: [],
+      };
+    }
+  },
+});
+
+/**
+ * Sync products for ALL companies (used by cron job)
+ *
+ * This internal action iterates through all companies and syncs their products.
+ * Runs periodically to keep product data fresh.
+ */
+export const syncAllCompaniesProducts = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{
+    totalCompanies: number;
+    successCount: number;
+    errorCount: number;
+    errors: string[];
+  }> => {
+    console.log("[syncAllCompaniesProducts] Starting scheduled product sync...");
+
+    try {
+      // Get all companies
+      const companies = await ctx.runQuery(api.companies.queries.getAllCompanies, {});
+
+      console.log(`[syncAllCompaniesProducts] Found ${companies.length} companies to sync`);
+
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+
+      // Sync each company's products
+      for (const company of companies) {
+        try {
+          console.log(`[syncAllCompaniesProducts] Syncing products for company: ${company._id} (${company.name})`);
+
+          const result = await ctx.runAction(api.products.actions.syncProducts, {
+            companyId: company._id,
+          });
+
+          if (result.success) {
+            successCount++;
+            console.log(`[syncAllCompaniesProducts] ✅ Company ${company.name}: synced ${result.syncedCount} products`);
+          } else {
+            errorCount++;
+            const errorMsg = `Company ${company.name}: ${result.errors.join(", ")}`;
+            errors.push(errorMsg);
+            console.error(`[syncAllCompaniesProducts] ❌ ${errorMsg}`);
+          }
+        } catch (error) {
+          errorCount++;
+          const errorMsg = `Company ${company.name}: ${error instanceof Error ? error.message : String(error)}`;
+          errors.push(errorMsg);
+          console.error(`[syncAllCompaniesProducts] ❌ ${errorMsg}`);
+        }
+
+        // Small delay between companies to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      console.log(`[syncAllCompaniesProducts] Sync complete. Success: ${successCount}, Errors: ${errorCount}`);
+
+      return {
+        totalCompanies: companies.length,
+        successCount,
+        errorCount,
+        errors: errors.slice(0, 10), // Limit errors returned
+      };
+    } catch (error) {
+      console.error("[syncAllCompaniesProducts] Failed:", error);
+      return {
+        totalCompanies: 0,
+        successCount: 0,
+        errorCount: 1,
+        errors: [error instanceof Error ? error.message : String(error)],
       };
     }
   },

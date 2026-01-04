@@ -71,13 +71,24 @@ export const verifyWhopUser = action({
       if (accessLevel === "admin") {
         // Team member - fetch their actual role from Whop
         try {
-          // Get the company ID from environment or experience
-          const companyId = process.env.WHOP_COMPANY_ID || "biz_2T7tC1fnFVo6d4"; // Fallback to the company ID from env
-          
+          // Get the company ID dynamically from the experience
+          const experience = await whopSdk.experiences.getExperience({ experienceId });
+          if (!experience || !experience.company) {
+            console.warn(`Could not get company from experience ${experienceId}`);
+            return {
+              hasAccess: true,
+              role: "support",
+              whopRole: "admin",
+            };
+          }
+
+          const companyId = experience.company.id;
+          console.log(`[verifyWhopUser] Got company ${companyId} from experience ${experienceId}`);
+
           // Get list of authorized users for this company
           const result = await whopSdk.companies.listAuthorizedUsers({ companyId });
           const authorizedUsers = (result as any)?.authorizedUsers || [];
-          
+
           // Find this specific user
           const teamMember = authorizedUsers.find((u: any) => u.id === userId);
 
@@ -90,7 +101,7 @@ export const verifyWhopUser = action({
               whopRole: teamMember.role,
             };
           }
-          
+
           // If not found in authorized users, default to support
           console.warn(`User ${userId} has admin access but not found in authorized users list`);
           return {

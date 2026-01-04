@@ -49,6 +49,37 @@ export const generateChatResponse = action({
         companyId: conversation.companyId
       });
 
+      // 1.5 Check rate limiting before proceeding
+      console.log("\n📊 STEP 1.5: Checking rate limits...");
+      const rateLimitCheck = await ctx.runQuery(api.rateLimiter.checkRateLimit, {
+        limitType: "aiResponse",
+        identifier: conversation.companyId,
+      });
+
+      if (rateLimitCheck.isRateLimited) {
+        console.warn("⚠️ Rate limit exceeded for company:", conversation.companyId);
+        // Create a rate limit message instead of throwing
+        await ctx.runMutation(api.messages.mutations.createMessage, {
+          conversationId,
+          content: "Our AI is receiving a lot of requests right now. Please wait a moment before sending another message.",
+          role: "system",
+        });
+
+        // Clear processing flag
+        await ctx.runMutation(api.conversations.mutations.setAiProcessing, {
+          conversationId,
+          isProcessing: false,
+        });
+
+        return {
+          success: false,
+          error: "Rate limited",
+          message: rateLimitCheck.message || "Too many requests. Please try again later.",
+          retryAfter: rateLimitCheck.resetAt,
+        };
+      }
+      console.log("✅ Rate limit check passed. Remaining requests:", rateLimitCheck.remainingRequests);
+
       console.log("\n📊 STEP 2: Fetching company data...");
       const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId: conversation.companyId,
@@ -84,12 +115,11 @@ export const generateChatResponse = action({
         timestamp: new Date(messages[messages.length - 1].timestamp).toISOString()
       } : "none");
 
-      // 3. Get company products (TODO: Enable after API generation)
+      // 3. Get company products for AI context
       console.log("\n📊 STEP 3.5: Fetching company products...");
-      // const products = await ctx.runQuery(api.products.queries.getActiveProducts, {
-      //   companyId: conversation.companyId,
-      // });
-      const products: any[] = []; // Temporary empty array until products API is generated
+      const products = await ctx.runQuery(api.products.queries.getActiveProducts, {
+        companyId: conversation.companyId,
+      });
       console.log("🛍️ Products fetched:", products.length);
 
       // 4. Build the system message with company context
@@ -310,11 +340,13 @@ ${company.aiSystemPrompt || ""}`;
           content: msg.content.substring(0, 100),
           timestamp: new Date(msg.timestamp).toISOString()
         });
-        
+
         if (msg.role === "customer") {
+          // Sanitize user input to prevent prompt injection
+          const sanitizedContent = sanitizeUserInput(msg.content);
           chatMessages.push({
             role: "user",
-            content: msg.content,
+            content: sanitizedContent,
           });
         } else if (msg.role === "ai" || msg.role === "agent") {
           chatMessages.push({
@@ -335,8 +367,8 @@ ${company.aiSystemPrompt || ""}`;
       const startTime = Date.now();
       
       // Log the exact request being sent
-      // Use gpt-4o for now since gpt-5-nano doesn't exist yet
-      const modelToUse = "gpt-4o";
+      // Use company's selected model with fallback to gpt-4o
+      const modelToUse = company.selectedAiModel || "gpt-4o";
       console.log("🚀 OpenAI Request Details:", {
         model: modelToUse,
         systemMessageLength: systemMessage.length,
@@ -562,6 +594,21 @@ ${company.aiSystemPrompt || ""}`;
         // Don't fail the whole request if usage tracking fails
       }
 
+      // 9.5 Record rate limit request for successful AI response
+      try {
+        await ctx.runMutation(api.rateLimiter.recordRateLimitedRequest, {
+          limitType: "aiResponse",
+          identifier: conversation.companyId,
+          metadata: {
+            conversationId,
+            tokensUsed: usage?.total_tokens || 0,
+          },
+        });
+      } catch (rateLimitError) {
+        console.warn("Failed to record rate limit request:", rateLimitError);
+        // Don't fail the whole request if rate limit recording fails
+      }
+
       // 10. Clear AI processing flag
       try {
         await ctx.runMutation(api.conversations.mutations.setAiProcessing, {
@@ -689,16 +736,75 @@ You are a customer support representative. Your responses should be:
 });
 
 // Helper function to get max tokens based on response length setting
-// Reduced token limits to keep responses focused on support
+// Matches schema: "brief" | "medium" | "detailed"
 function getMaxTokens(responseLength: string): number {
   switch (responseLength) {
-    case "short":
-      return 100;  // Was 150
+    case "brief":
+      return 100;
     case "medium":
-      return 200;  // Was 300
-    case "long":
-      return 350;  // Was 500
+      return 200;
+    case "detailed":
+      return 350;
     default:
-      return 200;  // Was 300
+      return 200;
   }
+}
+
+/**
+ * Sanitize user input before sending to OpenAI
+ * Prevents prompt injection attacks and removes potentially harmful content
+ */
+function sanitizeUserInput(input: string): string {
+  if (!input || typeof input !== 'string') {
+    return '';
+  }
+
+  let sanitized = input;
+
+  // 1. Limit message length (10K chars max to prevent token abuse)
+  const MAX_LENGTH = 10000;
+  if (sanitized.length > MAX_LENGTH) {
+    sanitized = sanitized.substring(0, MAX_LENGTH) + '... [message truncated]';
+  }
+
+  // 2. Remove null bytes and other control characters (except newlines/tabs)
+  sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+  // 3. Detect and neutralize common prompt injection patterns
+  const injectionPatterns = [
+    // System prompt manipulation attempts
+    /\[SYSTEM\]/gi,
+    /\[INST\]/gi,
+    /<<SYS>>/gi,
+    /<\|system\|>/gi,
+    /<\|assistant\|>/gi,
+    /<\|user\|>/gi,
+    /###\s*(System|Assistant|Human|User)\s*:/gi,
+    // Instruction override attempts
+    /ignore\s+(all\s+)?(previous|above|prior)\s+(instructions?|prompts?|rules?)/gi,
+    /disregard\s+(all\s+)?(previous|above|prior)\s+(instructions?|prompts?|rules?)/gi,
+    /forget\s+(all\s+)?(previous|above|prior)\s+(instructions?|prompts?|rules?)/gi,
+    /new\s+instructions?:/gi,
+    /override\s+(system|instructions?|rules?)/gi,
+    // Role manipulation
+    /you\s+are\s+now\s+(a|an|the)\s+/gi,
+    /pretend\s+(to\s+be|you\s+are)/gi,
+    /act\s+as\s+(if\s+you\s+are|a|an)/gi,
+    /roleplay\s+as/gi,
+    // Jailbreak attempts
+    /\bDAN\b/g,  // "Do Anything Now" jailbreak
+    /developer\s+mode/gi,
+    /jailbreak/gi,
+  ];
+
+  for (const pattern of injectionPatterns) {
+    sanitized = sanitized.replace(pattern, '[FILTERED]');
+  }
+
+  // 4. Escape sequences that could be interpreted as special formatting
+  sanitized = sanitized
+    .replace(/```system/gi, '``` system')
+    .replace(/```assistant/gi, '``` assistant');
+
+  return sanitized.trim();
 }

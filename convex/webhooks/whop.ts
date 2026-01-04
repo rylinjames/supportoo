@@ -159,6 +159,104 @@ export const handlePaymentSucceeded = action({
 });
 
 /**
+ * Handle membership.went_valid webhook
+ *
+ * When a user gains access to a membership:
+ * 1. Extract company info (page_id is company_id)
+ * 2. Create company if it doesn't exist
+ * 3. Store experience→company mapping for future lookups
+ *
+ * This is crucial for multi-tenancy - it captures the company context
+ * when users first access the app through a new Whop.
+ */
+export const handleMembershipValid = action({
+  args: {
+    webhookData: v.any(),
+  },
+  handler: async (
+    ctx,
+    { webhookData }
+  ): Promise<{ success: boolean; companyName?: string }> => {
+    console.log("✅ Processing membership.went_valid webhook");
+
+    const data = webhookData.data;
+
+    // Extract key fields from membership webhook
+    // page_id is the company ID in Whop's terminology
+    const {
+      id: membershipId,
+      user_id: userId,
+      product_id: productId,
+      plan_id: whopPlanId,
+      page_id: whopCompanyId, // This is the company ID!
+    } = data;
+
+    console.log("  - Membership ID:", membershipId);
+    console.log("  - User ID:", userId);
+    console.log("  - Product ID:", productId);
+    console.log("  - Company ID (page_id):", whopCompanyId);
+
+    if (!whopCompanyId) {
+      console.log("  ⚠️ No company ID in webhook, cannot process");
+      return { success: false };
+    }
+
+    // Check if company already exists
+    let company = await ctx.runQuery(
+      api.companies.queries.getCompanyByWhopId,
+      { whopCompanyId }
+    );
+
+    if (company) {
+      console.log("  ✅ Company already exists:", company.name);
+      return { success: true, companyName: company.name };
+    }
+
+    // Company doesn't exist - need to get company name and create it
+    console.log("  📝 Creating new company for:", whopCompanyId);
+
+    // Try to get company name from Whop API
+    let companyName = "My Company";
+    try {
+      const apiKey = process.env.WHOP_API_KEY;
+      if (apiKey) {
+        const companyResponse = await fetch(
+          `https://api.whop.com/api/v2/businesses/${whopCompanyId}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              Accept: "application/json",
+            },
+          }
+        );
+
+        if (companyResponse.ok) {
+          const companyData = await companyResponse.json();
+          companyName = companyData.title || companyData.name || "My Company";
+          console.log("  ✅ Got company name from API:", companyName);
+        }
+      }
+    } catch (e) {
+      console.log("  ⚠️ Failed to get company name from API:", e);
+    }
+
+    // Create the company
+    const companyId = await ctx.runMutation(
+      api.companies.mutations.createCompany,
+      {
+        whopCompanyId,
+        name: companyName,
+        // Note: We don't have experienceId here, it will be added when admin accesses
+      }
+    );
+
+    console.log("  ✅ Created company:", companyId);
+    return { success: true, companyName };
+  },
+});
+
+/**
  * Handle membership.went_invalid webhook
  *
  * When a subscription is cancelled:

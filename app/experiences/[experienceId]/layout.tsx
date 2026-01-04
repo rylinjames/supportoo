@@ -59,7 +59,7 @@ const Layout = ({ children }: LayoutProps) => {
       setError(undefined);
 
       try {
-        const { userId } = await verifyUserToken();
+        const { userId, userToken } = await verifyUserToken();
         if (!userId) {
           setError("Error authenticating user:");
           setCurrentUser(undefined);
@@ -85,6 +85,7 @@ const Layout = ({ children }: LayoutProps) => {
         const res = await onboardUser({
           whopUserId: userId,
           experienceId: experienceId,
+          userToken: userToken, // Pass user token for API calls
         });
 
         if (!res.success) {

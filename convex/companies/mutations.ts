@@ -9,6 +9,22 @@ import { v } from "convex/values";
 import { api } from "../_generated/api";
 
 /**
+ * Update experience ID for an existing company
+ */
+export const updateExperienceId = mutation({
+  args: {
+    companyId: v.id("companies"),
+    experienceId: v.string(),
+  },
+  handler: async (ctx, { companyId, experienceId }) => {
+    await ctx.db.patch(companyId, {
+      whopExperienceId: experienceId,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
  * Create a new company
  *
  * Called when the first admin from a company accesses the app.
@@ -18,8 +34,9 @@ export const createCompany = mutation({
   args: {
     whopCompanyId: v.string(),
     name: v.string(),
+    experienceId: v.optional(v.string()),
   },
-  handler: async (ctx, { whopCompanyId, name }) => {
+  handler: async (ctx, { whopCompanyId, name, experienceId }) => {
     // Get the Free plan ID (default for new companies)
     const freePlan = await ctx.db
       .query("plans")
@@ -34,6 +51,7 @@ export const createCompany = mutation({
 
     const companyId = await ctx.db.insert("companies", {
       whopCompanyId,
+      whopExperienceId: experienceId,
       name,
       planId: freePlan._id,
 
@@ -372,6 +390,99 @@ export const deleteCompanyContextFile = mutation({
   },
   handler: async (ctx, { fileId }) => {
     await ctx.db.delete(fileId);
+  },
+});
+
+/**
+ * Delete a company and ALL related data
+ *
+ * Use with extreme caution - this is destructive and irreversible.
+ * Deletes: company, user relationships, conversations, messages, products, etc.
+ */
+export const deleteCompany = mutation({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    // 1. Delete all user-company relationships
+    const userCompanyRelationships = await ctx.db
+      .query("user_companies")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    for (const rel of userCompanyRelationships) {
+      await ctx.db.delete(rel._id);
+    }
+    console.log(`Deleted ${userCompanyRelationships.length} user-company relationships`);
+
+    // 2. Delete all conversations and their messages
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_company_status", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    for (const conv of conversations) {
+      // Delete messages in this conversation
+      const messages = await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (q) => q.eq("conversationId", conv._id))
+        .collect();
+
+      for (const msg of messages) {
+        await ctx.db.delete(msg._id);
+      }
+
+      await ctx.db.delete(conv._id);
+    }
+    console.log(`Deleted ${conversations.length} conversations`);
+
+    // 3. Delete all products
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    for (const product of products) {
+      await ctx.db.delete(product._id);
+    }
+    console.log(`Deleted ${products.length} products`);
+
+    // 4. Delete company context files
+    const contextFiles = await ctx.db
+      .query("company_context_files")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    for (const file of contextFiles) {
+      await ctx.db.delete(file._id);
+    }
+    console.log(`Deleted ${contextFiles.length} context files`);
+
+    // 5. Delete templates
+    const templates = await ctx.db
+      .query("templates")
+      .withIndex("by_company_active", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    for (const template of templates) {
+      await ctx.db.delete(template._id);
+    }
+    console.log(`Deleted ${templates.length} templates`);
+
+    // 6. Finally, delete the company itself
+    await ctx.db.delete(companyId);
+    console.log(`Deleted company ${companyId}`);
+
+    return {
+      success: true,
+      deleted: {
+        userRelationships: userCompanyRelationships.length,
+        conversations: conversations.length,
+        products: products.length,
+        contextFiles: contextFiles.length,
+        templates: templates.length,
+      },
+    };
   },
 });
 

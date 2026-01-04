@@ -95,21 +95,20 @@ export const addTeamMember = mutation({
         whopUserId: existingUser.whopUserId,
       };
     } else {
-      // Create new pending user (old flow - for backwards compatibility)
+      // Create new pending user
+      const now = Date.now();
       const userId = await ctx.db.insert("users", {
         whopUsername: cleanUsername,
-        whopUserId: `pending_${cleanUsername}_${Date.now()}`,
-        companyId: companyId,
-        role,
+        whopUserId: `pending_${cleanUsername}_${now}`,
         displayName: cleanUsername,
         timezone: "America/New_York",
         theme: "system",
-        roleLastChecked: Date.now(),
+        roleLastChecked: now,
         notificationsEnabled: true,
-        lastActiveAt: Date.now(),
-        lastLoginAt: Date.now(),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        lastActiveAt: now,
+        lastLoginAt: now,
+        createdAt: now,
+        updatedAt: now,
       });
 
       // Create junction table relationship
@@ -239,21 +238,20 @@ export const addVerifiedTeamMember = mutation({
     } else {
       // Create new user - check if it's pending or verified
       const isPending = whopUserId.startsWith("pending_");
-      
+      const now = Date.now();
+
       const userId = await ctx.db.insert("users", {
         whopUsername,
         whopUserId,
-        companyId: companyId,
-        role,
         displayName,
         timezone: "America/New_York",
         theme: "system",
-        roleLastChecked: Date.now(),
+        roleLastChecked: now,
         notificationsEnabled: true,
-        lastActiveAt: Date.now(),
-        lastLoginAt: Date.now(),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        lastActiveAt: now,
+        lastLoginAt: now,
+        createdAt: now,
+        updatedAt: now,
       });
 
       // Create junction table relationship

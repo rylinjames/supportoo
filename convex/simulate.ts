@@ -107,18 +107,27 @@ export const createTestConversation = mutation({
     if (!customer) {
       const customerId = await ctx.db.insert("users", {
         whopUserId: "test_customer_1",
-        companyId,
         whopUsername: "test.customer",
         displayName: "Test Customer",
         avatarUrl:
           "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-        role: "customer",
         roleLastChecked: now,
         timezone: "America/New_York",
         theme: "system",
         notificationsEnabled: true,
         lastActiveAt: now,
         lastLoginAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Create junction table relationship
+      await ctx.db.insert("user_companies", {
+        userId: customerId,
+        companyId,
+        role: "customer",
+        joinedAt: now,
+        lastActiveInCompany: now,
         createdAt: now,
         updatedAt: now,
       });
@@ -467,18 +476,27 @@ export const createTestAgent = mutation({
 
     const agentId = await ctx.db.insert("users", {
       whopUserId: `test_agent_${Date.now()}`,
-      companyId,
       whopUsername: testUsername,
       displayName: testDisplayName,
       avatarUrl:
         "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face",
-      role: "support",
       roleLastChecked: now,
       timezone: "America/New_York",
       theme: "system",
       notificationsEnabled: true,
       lastActiveAt: now,
       lastLoginAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Create junction table relationship
+    await ctx.db.insert("user_companies", {
+      userId: agentId,
+      companyId,
+      role: "support",
+      joinedAt: now,
+      lastActiveInCompany: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -559,20 +577,29 @@ export const listTestAgents = query({
     companyId: v.id("companies"),
   },
   handler: async (ctx, { companyId }) => {
-    const agents = await ctx.db
-      .query("users")
+    // Use user_companies junction table instead of deprecated users.by_company_role
+    const supportUserCompanies = await ctx.db
+      .query("user_companies")
       .withIndex("by_company_role", (q) =>
         q.eq("companyId", companyId).eq("role", "support")
       )
-      .filter((q) => q.eq(q.field("whopUserId"), "test_agent"))
       .collect();
 
-    return agents.map((agent) => ({
-      id: agent._id,
-      username: agent.whopUsername,
-      displayName: agent.displayName,
-      createdAt: agent.createdAt,
-    }));
+    // Fetch users and filter for test agents
+    const agents = await Promise.all(
+      supportUserCompanies.map(async (uc) => {
+        const user = await ctx.db.get(uc.userId);
+        if (!user || user.whopUserId !== "test_agent") return null;
+        return {
+          id: user._id,
+          username: user.whopUsername,
+          displayName: user.displayName,
+          createdAt: user.createdAt,
+        };
+      })
+    );
+
+    return agents.filter(Boolean);
   },
 });
 
@@ -610,18 +637,27 @@ export const createTestCustomer = mutation({
 
     const customerId = await ctx.db.insert("users", {
       whopUserId: `test_customer_${Date.now()}`,
-      companyId,
       whopUsername: testUsername,
       displayName: testDisplayName,
       avatarUrl:
         "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-      role: "customer",
       roleLastChecked: now,
       timezone: "America/New_York",
       theme: "system",
       notificationsEnabled: true,
       lastActiveAt: now,
       lastLoginAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Create junction table relationship
+    await ctx.db.insert("user_companies", {
+      userId: customerId,
+      companyId,
+      role: "customer",
+      joinedAt: now,
+      lastActiveInCompany: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -648,11 +684,17 @@ export const getTestCustomer = query({
       throw new Error("Customer not found");
     }
 
+    // Get role from junction table
+    const userCompany = await ctx.db
+      .query("user_companies")
+      .withIndex("by_user", (q) => q.eq("userId", customerId))
+      .first();
+
     return {
       id: customer._id,
       username: customer.whopUsername,
       displayName: customer.displayName,
-      role: customer.role,
+      role: userCompany?.role || "customer",
       createdAt: customer.createdAt,
     };
   },
@@ -671,15 +713,23 @@ export const deleteTestCustomer = mutation({
       throw new Error("Customer not found");
     }
 
-    if (!customer.companyId) {
-      throw new Error("Customer has no companyId");
+    // Get the customer's company relationship from junction table
+    const userCompanyRelation = await ctx.db
+      .query("user_companies")
+      .withIndex("by_user", (q) => q.eq("userId", customerId))
+      .first();
+
+    if (!userCompanyRelation) {
+      throw new Error("Customer has no company relationship");
     }
+
+    const companyId = userCompanyRelation.companyId;
 
     // Get all conversations for this customer
     const conversations = await ctx.db
       .query("conversations")
       .withIndex("by_company_customer", (q) =>
-        q.eq("companyId", customer.companyId!).eq("customerId", customerId)
+        q.eq("companyId", companyId).eq("customerId", customerId)
       )
       .collect();
 
@@ -707,6 +757,16 @@ export const deleteTestCustomer = mutation({
 
     for (const p of presence) {
       await ctx.db.delete(p._id);
+    }
+
+    // Delete user_companies relationship
+    const userCompanies = await ctx.db
+      .query("user_companies")
+      .withIndex("by_user", (q) => q.eq("userId", customerId))
+      .collect();
+
+    for (const uc of userCompanies) {
+      await ctx.db.delete(uc._id);
     }
 
     await ctx.db.delete(customerId);

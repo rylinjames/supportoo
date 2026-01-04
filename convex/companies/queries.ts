@@ -25,6 +25,24 @@ export const getCompanyByWhopId = query({
 });
 
 // ============================================================================
+// GET COMPANY BY EXPERIENCE ID
+// ============================================================================
+
+export const getCompanyByExperienceId = query({
+  args: {
+    experienceId: v.string(),
+  },
+  handler: async (ctx, { experienceId }) => {
+    return await ctx.db
+      .query("companies")
+      .withIndex("by_whop_experience_id", (q) =>
+        q.eq("whopExperienceId", experienceId)
+      )
+      .first();
+  },
+});
+
+// ============================================================================
 // GET COMPANY BY ID
 // ============================================================================
 
@@ -34,6 +52,17 @@ export const getCompanyById = query({
   },
   handler: async (ctx, { companyId }) => {
     return await ctx.db.get(companyId);
+  },
+});
+
+// ============================================================================
+// GET ALL COMPANIES (for cron jobs and admin)
+// ============================================================================
+
+export const getAllCompanies = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("companies").collect();
   },
 });
 

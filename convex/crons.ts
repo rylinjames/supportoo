@@ -48,4 +48,16 @@ crons.interval(
   internal.usage.crons.aggregateDailyUsage
 );
 
+/**
+ * Sync products for all companies
+ *
+ * Runs every 6 hours to keep product data fresh.
+ * Ensures AI has up-to-date product information for customer support.
+ */
+crons.interval(
+  "sync all companies products",
+  { hours: 6 }, // Run every 6 hours
+  internal.products.actions.syncAllCompaniesProducts
+);
+
 export default crons;

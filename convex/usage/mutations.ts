@@ -61,13 +61,17 @@ export const trackAIResponse = mutation({
         usageWarningSent: true,
       });
 
-      // Send notification to all admins
-      const admins = await ctx.db
-        .query("users")
+      // Send notification to all admins (use user_companies junction table)
+      const adminUserCompanies = await ctx.db
+        .query("user_companies")
         .withIndex("by_company_role", (q) =>
           q.eq("companyId", conversation.companyId).eq("role", "admin")
         )
         .collect();
+
+      const admins = await Promise.all(
+        adminUserCompanies.map(async (uc) => ctx.db.get(uc.userId))
+      );
 
       if (admins.length > 0) {
         // Schedule notification to be sent (mutations can't call actions directly)

@@ -44,6 +44,7 @@ export default defineSchema({
   companies: defineTable({
     // Core company info
     whopCompanyId: v.string(), // Whop's company ID
+    whopExperienceId: v.optional(v.string()), // Experience ID for this company's app installation
     name: v.string(),
     domain: v.optional(v.string()),
     timezone: v.string(),
@@ -109,6 +110,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_whop_company_id", ["whopCompanyId"])
+    .index("by_whop_experience_id", ["whopExperienceId"])
     .index("by_plan", ["planId"])
     .index("by_billing_status", ["billingStatus"]),
 
@@ -118,24 +120,27 @@ export default defineSchema({
   users: defineTable({
     // Whop integration
     whopUserId: v.string(),
-    companyId: v.optional(v.id("companies")), // TEMPORARY - will be removed after migration
 
     // User info (from Whop)
     whopUsername: v.string(),
     displayName: v.string(),
     avatarUrl: v.optional(v.string()),
 
-    // Role (cached from Whop) - TEMPORARY - will be removed after migration
+    // DEPRECATED: These fields are kept for backwards compatibility with existing data
+    // Use user_companies junction table instead. Will be cleaned up in future migration.
+    companyId: v.optional(v.id("companies")),
     role: v.optional(
       v.union(v.literal("admin"), v.literal("support"), v.literal("customer"))
     ),
+
+    // Role verification timestamp
     roleLastChecked: v.number(), // When we last verified with Whop
 
     // User preferences
     timezone: v.string(),
     theme: v.union(v.literal("light"), v.literal("dark"), v.literal("system")),
     notificationsEnabled: v.boolean(),
-    
+
     // Agent-specific settings
     agentGreeting: v.optional(v.string()), // Custom greeting when joining conversations
     autoGreetingEnabled: v.optional(v.boolean()), // Whether to auto-send greeting
@@ -155,9 +160,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_whop_user_id", ["whopUserId"])
-    .index("by_whop_username", ["whopUsername"])
-    .index("by_company_role", ["companyId", "role"]) // TEMPORARY - will be removed
-    .index("by_company", ["companyId"]), // TEMPORARY - will be removed
+    .index("by_whop_username", ["whopUsername"]),
 
   // ============================================================================
   // USER_COMPANIES - Junction table for multi-company support

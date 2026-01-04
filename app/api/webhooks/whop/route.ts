@@ -56,6 +56,18 @@ export async function POST(request: Request) {
         console.log("✅ Payment processed successfully");
         break;
 
+      case "membership.went_valid":
+        console.log("✅ Processing membership.went_valid");
+
+        // Call Convex action to handle new membership access
+        // This captures company info for experience→company mapping
+        await convex.action(api.webhooks.whop.handleMembershipValid, {
+          webhookData: webhook,
+        });
+
+        console.log("✅ Membership access processed successfully");
+        break;
+
       case "membership.went_invalid":
         console.log("❌ Processing membership.went_invalid");
 

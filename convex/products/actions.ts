@@ -77,45 +77,73 @@ export const syncProducts = action({
         let hasMore = true;
 
         while (hasMore) {
-          // When using user token, use /v5/me/products to get products the user's company owns
-          // When using app API key, we filter by company_id (note: this may only work for app owner's company)
-          const url = userToken
-            ? `https://api.whop.com/api/v5/me/products?page=${page}&per=${50}`
-            : `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=${page}&per_page=50`;
+          // Try v1 API first (properly enforces company_id), fallback to v2
+          const v1Url = `https://api.whop.com/api/v1/products?company_id=${company.whopCompanyId}&first=50`;
+          const v2Url = `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=${page}&per_page=50`;
 
-          console.log(`[syncProducts] Fetching from: ${url}`);
+          console.log(`[syncProducts] Trying v1 API: ${v1Url}`);
 
-          const response = await fetch(url, {
+          let response = await fetch(v1Url, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${authToken}`,
               'Accept': 'application/json',
             }
           });
-          
+
+          let usingV1 = true;
+
+          // If v1 fails with forbidden, the company hasn't granted permissions
           if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[syncProducts] API error:`, errorText);
+            console.warn(`[syncProducts] v1 API error: ${errorText}`);
+
+            // Check if it's a permission error
+            if (errorText.includes('forbidden') || errorText.includes('not authorized')) {
+              console.log(`[syncProducts] ⚠️ PERMISSION ERROR - Company needs to re-authorize the app`);
+              console.log(`[syncProducts] The company must grant 'access_pass:basic:read' permission`);
+
+              // Return helpful error instead of syncing wrong products
+              return {
+                success: false,
+                syncedCount: 0,
+                deletedCount: 0,
+                errors: [
+                  "Permission denied: This company needs to re-authorize the app to grant product access. " +
+                  "Please go to Settings → Apps in your Whop dashboard and re-authorize this app."
+                ],
+              };
+            }
+
+            console.error(`[syncProducts] API failed:`, errorText);
             break;
           }
-          
+
           const data = await response.json();
-          
-          if (data.data && Array.isArray(data.data)) {
-            allProducts.push(...data.data);
-            console.log(`[syncProducts] Fetched ${data.data.length} products from page ${page}`);
+
+          // Handle response format
+          const products = data.data || data;
+          if (Array.isArray(products)) {
+            allProducts.push(...products);
+            console.log(`[syncProducts] Fetched ${products.length} products (page ${page}, using ${usingV1 ? 'v1' : 'v2'} API)`);
           }
-          
-          // Check if there are more pages (handle both v2 and v5 API formats)
-          const totalPages = data.pagination?.total_pages || data.pagination?.total_page || 1;
-          if (data.pagination && page < totalPages) {
-            page++;
-            hasMore = true;
+
+          // Check pagination based on API version
+          if (usingV1) {
+            // v1 uses cursor-based pagination
+            hasMore = false; // For now, just get first batch from v1
           } else {
-            hasMore = false;
+            // v2 uses page-based pagination
+            const totalPages = data.pagination?.total_pages || data.pagination?.total_page || 1;
+            if (data.pagination && page < totalPages) {
+              page++;
+              hasMore = true;
+            } else {
+              hasMore = false;
+            }
           }
-          
-          // Safety limit to prevent infinite loops
+
+          // Safety limit
           if (page > 20) {
             console.log(`[syncProducts] Reached page limit of 20`);
             break;

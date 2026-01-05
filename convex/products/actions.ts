@@ -150,12 +150,23 @@ export const syncProducts = action({
           console.log(`[syncProducts] 🏢 Product Company IDs: ${companyIds.join(', ')}`);
           console.log(`[syncProducts] Expected Company ID: ${company.whopCompanyId}`);
 
-          const allMatch = companyIds.every(id => id === company.whopCompanyId);
+          const allMatch = companyIds.every(id => id === company.whopCompanyId || id === 'unknown');
           if (allMatch) {
             console.log(`[syncProducts] ✅ MULTI-TENANCY CHECK PASSED - All products belong to correct company`);
           } else {
-            console.log(`[syncProducts] ⚠️ MULTI-TENANCY WARNING - Some products may belong to different companies`);
-            console.log(`[syncProducts] This is expected when using app_api_key without user_token`);
+            console.log(`[syncProducts] ❌ MULTI-TENANCY CHECK FAILED - Products belong to wrong company!`);
+            console.log(`[syncProducts] Aborting sync to prevent data corruption.`);
+
+            // ABORT - Don't sync wrong company's products
+            return {
+              success: false,
+              syncedCount: 0,
+              deletedCount: 0,
+              errors: [
+                `Multi-tenancy violation: API returned products from ${companyIds.join(', ')} but expected ${company.whopCompanyId}. ` +
+                `Please sync from the UI to use your authentication token.`
+              ],
+            };
           }
 
           // Log first 3 products for debugging

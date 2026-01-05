@@ -200,7 +200,7 @@ export const syncProducts = action({
         if (!whopProduct) continue; // Skip null entries
         
         try {
-          const productId = await syncSingleProduct(ctx, companyId, whopProduct);
+          const productId = await syncSingleProduct(ctx, companyId, company.whopCompanyId, whopProduct);
           syncedProductIds.push(whopProduct.id);
           console.log(`[syncProducts] Synced product: ${whopProduct.id} -> ${productId}`);
         } catch (error) {
@@ -243,13 +243,14 @@ export const syncProducts = action({
 async function syncSingleProduct(
   ctx: any,
   companyId: string,
+  whopCompanyId: string,
   whopProduct: any
 ) {
   // Map Whop product data to our schema
   const productData = {
     companyId,
     whopProductId: whopProduct.id,
-    whopCompanyId: whopProduct.company_id || whopProduct.companyId,
+    whopCompanyId: whopProduct.company_id || whopProduct.companyId || whopCompanyId,
     title: whopProduct.title || whopProduct.name || "Untitled Product",
     description: whopProduct.description,
     

@@ -77,13 +77,15 @@ export const syncProducts = action({
         let hasMore = true;
 
         while (hasMore) {
-          // Try v1 API first (properly enforces company_id), fallback to v2
-          const v1Url = `https://api.whop.com/api/v1/products?company_id=${company.whopCompanyId}&first=50`;
-          const v2Url = `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=${page}&per_page=50`;
+          // Use /v5/me/products with userToken (returns user's company products)
+          // Fall back to v2 API with company_id filter when no userToken
+          const url = userToken
+            ? `https://api.whop.com/api/v5/me/products?page=${page}&per=50`
+            : `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=${page}&per_page=50`;
 
-          console.log(`[syncProducts] Trying v1 API: ${v1Url}`);
+          console.log(`[syncProducts] Fetching from: ${url}`);
 
-          let response = await fetch(v1Url, {
+          const response = await fetch(url, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${authToken}`,
@@ -91,31 +93,26 @@ export const syncProducts = action({
             }
           });
 
-          let usingV1 = true;
-
-          // If v1 fails with forbidden, the company hasn't granted permissions
           if (!response.ok) {
             const errorText = await response.text();
-            console.warn(`[syncProducts] v1 API error: ${errorText}`);
+            console.error(`[syncProducts] API error: ${errorText}`);
 
-            // Check if it's a permission error
-            if (errorText.includes('forbidden') || errorText.includes('not authorized')) {
-              console.log(`[syncProducts] ⚠️ PERMISSION ERROR - Company needs to re-authorize the app`);
-              console.log(`[syncProducts] The company must grant 'access_pass:basic:read' permission`);
+            // Check if it's a permission/auth error
+            if (errorText.includes('forbidden') || errorText.includes('not authorized') || errorText.includes('unauthorized')) {
+              console.log(`[syncProducts] ⚠️ AUTH ERROR - Token may be invalid or expired`);
 
-              // Return helpful error instead of syncing wrong products
               return {
                 success: false,
                 syncedCount: 0,
                 deletedCount: 0,
                 errors: [
-                  "Permission denied: This company needs to re-authorize the app to grant product access. " +
-                  "Please go to Settings → Apps in your Whop dashboard and re-authorize this app."
+                  userToken
+                    ? "Authentication failed. Please refresh the page and try again."
+                    : "Permission denied: This company needs to re-authorize the app."
                 ],
               };
             }
 
-            console.error(`[syncProducts] API failed:`, errorText);
             break;
           }
 
@@ -125,22 +122,16 @@ export const syncProducts = action({
           const products = data.data || data;
           if (Array.isArray(products)) {
             allProducts.push(...products);
-            console.log(`[syncProducts] Fetched ${products.length} products (page ${page}, using ${usingV1 ? 'v1' : 'v2'} API)`);
+            console.log(`[syncProducts] Fetched ${products.length} products (page ${page})`);
           }
 
-          // Check pagination based on API version
-          if (usingV1) {
-            // v1 uses cursor-based pagination
-            hasMore = false; // For now, just get first batch from v1
+          // Check pagination (v5 and v2 both use similar pagination structure)
+          const totalPages = data.pagination?.total_pages || data.pagination?.total_page || 1;
+          if (data.pagination && page < totalPages) {
+            page++;
+            hasMore = true;
           } else {
-            // v2 uses page-based pagination
-            const totalPages = data.pagination?.total_pages || data.pagination?.total_page || 1;
-            if (data.pagination && page < totalPages) {
-              page++;
-              hasMore = true;
-            } else {
-              hasMore = false;
-            }
+            hasMore = false;
           }
 
           // Safety limit

@@ -81,10 +81,33 @@ const InnerLayout = ({ children }: LayoutProps) => {
         if (iframeSdk?.getTopLevelUrlData) {
           try {
             const urlData = await iframeSdk.getTopLevelUrlData({});
-            console.log("[Layout] Iframe SDK URL data:", urlData);
-            companyRoute = urlData?.companyRoute;
+            console.log("[Layout] Iframe SDK URL data:", JSON.stringify(urlData, null, 2));
+
+            // Try to extract company route from fullHref if companyRoute is malformed
+            if (urlData?.fullHref) {
+              // Parse URL like: https://whop.com/test-whop/hub/support-ai-chat-test/
+              const urlMatch = urlData.fullHref.match(/whop\.com\/([^\/]+)\//);
+              if (urlMatch && urlMatch[1]) {
+                companyRoute = urlMatch[1];
+                console.log("[Layout] Extracted company route from fullHref:", companyRoute);
+              }
+            }
+
+            // Fallback to companyRoute if no match from fullHref
+            if (!companyRoute && urlData?.companyRoute) {
+              // Handle potential duplicate routes like "test-whop-test-whop"
+              const parts = urlData.companyRoute.split('-');
+              const halfLength = parts.length / 2;
+              if (parts.length > 2 && parts.slice(0, halfLength).join('-') === parts.slice(halfLength).join('-')) {
+                companyRoute = parts.slice(0, halfLength).join('-');
+                console.log("[Layout] Fixed duplicated company route:", companyRoute);
+              } else {
+                companyRoute = urlData.companyRoute;
+              }
+            }
+
             if (companyRoute) {
-              console.log("[Layout] Got company route from iframe SDK:", companyRoute);
+              console.log("[Layout] Final company route:", companyRoute);
             }
           } catch (iframeError) {
             console.log("[Layout] Failed to get URL data from iframe SDK:", iframeError);

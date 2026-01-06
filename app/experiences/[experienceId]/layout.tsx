@@ -5,7 +5,7 @@ import { api } from "@/convex/_generated/api";
 import { Sidebar } from "@/app/components/sidebar/sidebar";
 import { UserProvider } from "@/app/contexts/user-context";
 import { WhopPaymentsProvider } from "@/app/contexts/whop-payments-context";
-import { WhopIframeSdkProvider } from "@whop/react";
+import { WhopIframeSdkProvider, useIframeSdk } from "@whop/react";
 import { useEffect, useState, useRef } from "react";
 import { verifyUserToken } from "@/components/server/whop-sdk";
 import { useParams, useRouter } from "next/navigation";
@@ -40,7 +40,8 @@ interface UserData {
   setupComplete: boolean;
 }
 
-const Layout = ({ children }: LayoutProps) => {
+// Inner component that has access to iframe SDK
+const InnerLayout = ({ children }: LayoutProps) => {
   const [currentUser, setCurrentUser] = useState<UserData | undefined>(
     undefined
   );
@@ -52,6 +53,7 @@ const Layout = ({ children }: LayoutProps) => {
   const { experienceId } = useParams() as { experienceId: string };
   const router = useRouter();
   const onboardUser = useAction(api.onboarding.actions.onboardUser);
+  const iframeSdk = useIframeSdk();
 
   useEffect(() => {
     const authenticateUser = async () => {
@@ -72,6 +74,21 @@ const Layout = ({ children }: LayoutProps) => {
         // Log if we got company ID from headers
         if (headerCompanyId) {
           console.log("[Layout] Got company ID from header:", headerCompanyId);
+        }
+
+        // Try to get company route from iframe SDK
+        let companyRoute: string | undefined;
+        if (iframeSdk?.getTopLevelUrlData) {
+          try {
+            const urlData = await iframeSdk.getTopLevelUrlData({});
+            console.log("[Layout] Iframe SDK URL data:", urlData);
+            companyRoute = urlData?.companyRoute;
+            if (companyRoute) {
+              console.log("[Layout] Got company route from iframe SDK:", companyRoute);
+            }
+          } catch (iframeError) {
+            console.log("[Layout] Failed to get URL data from iframe SDK:", iframeError);
+          }
         }
 
         // Store the user token for later use (e.g., product sync)
@@ -97,6 +114,7 @@ const Layout = ({ children }: LayoutProps) => {
           experienceId: experienceId,
           userToken: token, // Pass user token for API calls
           companyIdFromHeader: headerCompanyId, // Pass company ID if available from header
+          companyRoute: companyRoute, // Pass company route from iframe SDK
         });
 
         if (!res.success) {
@@ -141,7 +159,7 @@ const Layout = ({ children }: LayoutProps) => {
       setError(undefined);
       previousUserIdRef.current = null;
     };
-  }, [onboardUser, experienceId, router]);
+  }, [onboardUser, experienceId, router, iframeSdk]);
 
   if (error) {
     return (
@@ -169,51 +187,58 @@ const Layout = ({ children }: LayoutProps) => {
   }
 
   return (
+    <WhopPaymentsProvider>
+      <UserProvider
+        userData={currentUser}
+        userToken={userToken}
+        isLoading={isLoading}
+        error={error}
+      >
+        <RouteGuard>
+          <Toaster />
+          {/* Desktop View */}
+          <div
+            suppressHydrationWarning
+            className="hidden xl:flex h-screen overflow-hidden"
+          >
+            <Sidebar
+              userType="admin"  // TEMPORARILY: Force admin to show all navigation
+              user={currentUser}
+            />
+            <div className="flex-1 overflow-hidden bg-background">
+              {children}
+            </div>
+          </div>
+          {/* Mobile/Tablet View */}
+          <div className="flex xl:hidden flex-col h-screen overflow-hidden">
+            <main className="flex-1 overflow-hidden bg-background">
+              {children}
+            </main>
+            {(() => {
+              const userRole =
+                currentUser?.userCompanies.find(
+                  (uc) => uc.companyId === currentUser.currentCompanyId
+                )?.role || "customer";
+              // TEMPORARILY: Show bottom nav for all users including customers
+              // if (userRole === "customer") {
+              //   return null;
+              // }
+              return (
+                <MobileBottomNav userType="admin" user={currentUser} />
+              );
+            })()}
+          </div>
+        </RouteGuard>
+      </UserProvider>
+    </WhopPaymentsProvider>
+  );
+};
+
+// Outer Layout that provides iframe SDK context
+const Layout = ({ children }: LayoutProps) => {
+  return (
     <WhopIframeSdkProvider>
-      <WhopPaymentsProvider>
-        <UserProvider
-          userData={currentUser}
-          userToken={userToken}
-          isLoading={isLoading}
-          error={error}
-        >
-          <RouteGuard>
-            <Toaster />
-            {/* Desktop View */}
-            <div
-              suppressHydrationWarning
-              className="hidden xl:flex h-screen overflow-hidden"
-            >
-              <Sidebar
-                userType="admin"  // TEMPORARILY: Force admin to show all navigation
-                user={currentUser}
-              />
-              <div className="flex-1 overflow-hidden bg-background">
-                {children}
-              </div>
-            </div>
-            {/* Mobile/Tablet View */}
-            <div className="flex xl:hidden flex-col h-screen overflow-hidden">
-              <main className="flex-1 overflow-hidden bg-background">
-                {children}
-              </main>
-              {(() => {
-                const userRole =
-                  currentUser?.userCompanies.find(
-                    (uc) => uc.companyId === currentUser.currentCompanyId
-                  )?.role || "customer";
-                // TEMPORARILY: Show bottom nav for all users including customers
-                // if (userRole === "customer") {
-                //   return null;
-                // }
-                return (
-                  <MobileBottomNav userType="admin" user={currentUser} />
-                );
-              })()}
-            </div>
-          </RouteGuard>
-        </UserProvider>
-      </WhopPaymentsProvider>
+      <InnerLayout>{children}</InnerLayout>
     </WhopIframeSdkProvider>
   );
 };

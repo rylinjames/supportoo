@@ -253,10 +253,11 @@ export const onboardUser = action({
     experienceId: v.string(), // From URL params in frontend
     userToken: v.optional(v.string()), // User's JWT token for API calls
     companyIdFromHeader: v.optional(v.string()), // Company ID if passed via header
+    companyRoute: v.optional(v.string()), // Company route/slug from iframe SDK
   },
   handler: async (
     ctx,
-    { whopUserId, experienceId, userToken, companyIdFromHeader }
+    { whopUserId, experienceId, userToken, companyIdFromHeader, companyRoute }
   ): Promise<{
     success: boolean;
     redirectTo: string;
@@ -337,7 +338,61 @@ export const onboardUser = action({
             });
           }
         }
-      } else {
+      } else if (companyRoute) {
+        // Step 2.6: Use company route from iframe SDK to look up company
+        console.log(`[onboardUser] Looking up company by route: ${companyRoute}`);
+        const apiKey = process.env.WHOP_API_KEY;
+
+        // Try to get company by route/slug using Whop API
+        try {
+          const companyResponse = await fetch(
+            `https://api.whop.com/api/v5/companies/${companyRoute}`,
+            {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Accept': 'application/json',
+              }
+            }
+          );
+
+          if (companyResponse.ok) {
+            const companyData = await companyResponse.json();
+            console.log(`[onboardUser] Company by route response:`, JSON.stringify(companyData, null, 2));
+
+            whopCompanyId = companyData.id || companyData.company_id;
+            companyName = companyData.title || companyData.name || "My Company";
+
+            if (whopCompanyId) {
+              console.log(`[onboardUser] Found company from route: ${whopCompanyId} (${companyName})`);
+
+              // Check if company already exists in our DB
+              company = await ctx.runQuery(
+                api.companies.queries.getCompanyByWhopId,
+                { whopCompanyId }
+              );
+
+              if (company) {
+                companyName = company.name;
+                // Update experienceId mapping if not set
+                if (!company.whopExperienceId) {
+                  await ctx.runMutation(api.companies.mutations.updateExperienceId, {
+                    companyId: company._id,
+                    experienceId,
+                  });
+                }
+              }
+            }
+          } else {
+            console.log(`[onboardUser] Company by route returned ${companyResponse.status}`);
+          }
+        } catch (routeError) {
+          console.error(`[onboardUser] Company by route lookup failed:`, routeError);
+        }
+      }
+
+      // Step 3: If we still don't have a company, try Whop API fallbacks
+      if (!whopCompanyId) {
         // Step 3: Try to get company info from Whop API
         console.log(`[onboardUser] Company not found by experienceId, trying Whop API...`);
         try {

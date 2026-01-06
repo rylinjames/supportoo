@@ -89,14 +89,34 @@ const InnerLayout = ({ children }: LayoutProps) => {
             viewType = urlData?.viewType;
             console.log("[Layout] View type:", viewType);
 
-            // Try to extract company route from fullHref if companyRoute is malformed
-            if (urlData?.fullHref) {
+            // Reserved Whop paths that aren't company routes
+            const reservedPaths = ['joined', 'hub', 'admin', 'app', 'analytics', 'api', 'login', 'signup', 'settings', 'checkout'];
+
+            // PRIORITY 1: Use companyRoute from iframe SDK (most reliable)
+            if (urlData?.companyRoute) {
+              let rawRoute = urlData.companyRoute;
+              console.log("[Layout] Raw companyRoute from SDK:", rawRoute);
+
+              // Handle potential duplicate routes like "test-whop-test-whop"
+              const parts = rawRoute.split('-');
+              const halfLength = Math.floor(parts.length / 2);
+              if (parts.length >= 4 && halfLength > 0 && parts.slice(0, halfLength).join('-') === parts.slice(halfLength).join('-')) {
+                rawRoute = parts.slice(0, halfLength).join('-');
+                console.log("[Layout] Fixed duplicated company route:", rawRoute);
+              }
+
+              // Skip if it's a reserved path
+              if (!reservedPaths.includes(rawRoute.toLowerCase())) {
+                companyRoute = rawRoute;
+                console.log("[Layout] Using companyRoute from SDK:", companyRoute);
+              }
+            }
+
+            // PRIORITY 2: Parse from fullHref as fallback
+            if (!companyRoute && urlData?.fullHref) {
               console.log("[Layout] Full href:", urlData.fullHref);
-              // Reserved Whop paths that aren't company routes
-              const reservedPaths = ['joined', 'hub', 'admin', 'app', 'analytics', 'api', 'login', 'signup', 'settings'];
 
               // Parse URL like: https://whop.com/test-whop/hub/support-ai-chat-test/
-              // or: https://whop.com/joined/test-whop/hub/support-ai-chat-test/
               const urlParts = urlData.fullHref.split('/');
               const whopIndex = urlParts.findIndex((part: string) => part.includes('whop.com'));
 
@@ -113,21 +133,10 @@ const InnerLayout = ({ children }: LayoutProps) => {
               }
             }
 
-            // Fallback to companyRoute if no match from fullHref
-            if (!companyRoute && urlData?.companyRoute) {
-              // Handle potential duplicate routes like "test-whop-test-whop"
-              const parts = urlData.companyRoute.split('-');
-              const halfLength = parts.length / 2;
-              if (parts.length > 2 && parts.slice(0, halfLength).join('-') === parts.slice(halfLength).join('-')) {
-                companyRoute = parts.slice(0, halfLength).join('-');
-                console.log("[Layout] Fixed duplicated company route:", companyRoute);
-              } else {
-                companyRoute = urlData.companyRoute;
-              }
-            }
-
             if (companyRoute) {
               console.log("[Layout] Final company route:", companyRoute);
+            } else {
+              console.log("[Layout] WARNING: Could not determine company route");
             }
           } catch (iframeError) {
             console.log("[Layout] Failed to get URL data from iframe SDK:", iframeError);

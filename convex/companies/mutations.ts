@@ -487,6 +487,112 @@ export const deleteCompany = mutation({
 });
 
 /**
+ * Delete company by whopCompanyId
+ *
+ * Utility function to clean up stale data.
+ * Finds company by whopCompanyId and deletes all related data.
+ */
+export const deleteCompanyByWhopId = mutation({
+  args: {
+    whopCompanyId: v.string(),
+  },
+  handler: async (ctx, { whopCompanyId }) => {
+    // Find company by whopCompanyId
+    const company = await ctx.db
+      .query("companies")
+      .withIndex("by_whop_company_id", (q) => q.eq("whopCompanyId", whopCompanyId))
+      .first();
+
+    if (!company) {
+      console.log(`No company found with whopCompanyId: ${whopCompanyId}`);
+      return { success: false, error: "Company not found" };
+    }
+
+    console.log(`Found company to delete: ${company._id} (${company.name})`);
+
+    // 1. Delete all user-company relationships
+    const userCompanyRelationships = await ctx.db
+      .query("user_companies")
+      .withIndex("by_company", (q) => q.eq("companyId", company._id))
+      .collect();
+
+    for (const rel of userCompanyRelationships) {
+      await ctx.db.delete(rel._id);
+    }
+    console.log(`Deleted ${userCompanyRelationships.length} user-company relationships`);
+
+    // 2. Delete all conversations and their messages
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_company_status", (q) => q.eq("companyId", company._id))
+      .collect();
+
+    for (const conv of conversations) {
+      const messages = await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (q) => q.eq("conversationId", conv._id))
+        .collect();
+
+      for (const msg of messages) {
+        await ctx.db.delete(msg._id);
+      }
+
+      await ctx.db.delete(conv._id);
+    }
+    console.log(`Deleted ${conversations.length} conversations`);
+
+    // 3. Delete all products
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_company", (q) => q.eq("companyId", company._id))
+      .collect();
+
+    for (const product of products) {
+      await ctx.db.delete(product._id);
+    }
+    console.log(`Deleted ${products.length} products`);
+
+    // 4. Delete company context files
+    const contextFiles = await ctx.db
+      .query("company_context_files")
+      .withIndex("by_company", (q) => q.eq("companyId", company._id))
+      .collect();
+
+    for (const file of contextFiles) {
+      await ctx.db.delete(file._id);
+    }
+    console.log(`Deleted ${contextFiles.length} context files`);
+
+    // 5. Delete templates
+    const templates = await ctx.db
+      .query("templates")
+      .withIndex("by_company_active", (q) => q.eq("companyId", company._id))
+      .collect();
+
+    for (const template of templates) {
+      await ctx.db.delete(template._id);
+    }
+    console.log(`Deleted ${templates.length} templates`);
+
+    // 6. Finally, delete the company itself
+    await ctx.db.delete(company._id);
+    console.log(`Deleted company ${company._id}`);
+
+    return {
+      success: true,
+      deletedCompanyId: company._id,
+      deleted: {
+        userRelationships: userCompanyRelationships.length,
+        conversations: conversations.length,
+        products: products.length,
+        contextFiles: contextFiles.length,
+        templates: templates.length,
+      },
+    };
+  },
+});
+
+/**
  * Update company plan (from Billing tab)
  *
  * TODO: Revisit this when we discuss Whop billing integration.

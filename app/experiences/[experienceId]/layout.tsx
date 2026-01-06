@@ -60,13 +60,18 @@ const Layout = ({ children }: LayoutProps) => {
       setError(undefined);
 
       try {
-        const { userId, userToken: token } = await verifyUserToken();
+        const { userId, userToken: token, companyId: headerCompanyId } = await verifyUserToken();
         if (!userId) {
           setError("Error authenticating user:");
           setCurrentUser(undefined);
           setUserToken(undefined);
           previousUserIdRef.current = null;
           return;
+        }
+
+        // Log if we got company ID from headers
+        if (headerCompanyId) {
+          console.log("[Layout] Got company ID from header:", headerCompanyId);
         }
 
         // Store the user token for later use (e.g., product sync)
@@ -91,6 +96,7 @@ const Layout = ({ children }: LayoutProps) => {
           whopUserId: userId,
           experienceId: experienceId,
           userToken: token, // Pass user token for API calls
+          companyIdFromHeader: headerCompanyId, // Pass company ID if available from header
         });
 
         if (!res.success) {

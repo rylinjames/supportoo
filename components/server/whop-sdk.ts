@@ -21,6 +21,14 @@ export async function verifyUserToken() {
     // Get the raw user token for API calls
     const rawToken = headersList.get('x-whop-user-token');
 
+    // Check if Whop sends company ID directly in headers
+    const companyIdHeader = headersList.get('x-whop-company-id') ||
+                            headersList.get('x-company-id') ||
+                            headersList.get('x-whop-company');
+    if (companyIdHeader) {
+      console.log("[verifyUserToken] Found company ID in header:", companyIdHeader);
+    }
+
     const tokenResult = await whopSdk.verifyUserToken(headersList);
     console.log("[verifyUserToken] Full token result:", JSON.stringify(tokenResult, null, 2));
     const { userId } = tokenResult;
@@ -40,7 +48,12 @@ export async function verifyUserToken() {
       "username:",
       username
     );
-    return { success: true, userId, userToken: rawToken || undefined };
+    return {
+      success: true,
+      userId,
+      userToken: rawToken || undefined,
+      companyId: companyIdHeader || undefined,
+    };
   } catch (error) {
     console.error("[verifyUserToken] Failed to verify Whop user token:", error);
     return {

@@ -28,8 +28,45 @@ async function getCompanyFromExperience(
     throw new Error("WHOP_API_KEY environment variable is required");
   }
 
-  // Method 0: If we have a user token, try to get company from user's membership context
+  // Method 0: If we have a user token, try to get company from user's context
   if (userToken) {
+    // Method 0a: Try to get user's authorized companies (best for admin/team members)
+    try {
+      console.log(`[getCompanyFromExperience] Trying /v5/me/companies for experience ${experienceId}...`);
+
+      const companiesResponse = await fetch(`https://api.whop.com/api/v5/me/companies`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${userToken}`,
+          'Accept': 'application/json',
+        }
+      });
+
+      if (companiesResponse.ok) {
+        const companiesData = await companiesResponse.json();
+        console.log(`[getCompanyFromExperience] User companies response:`, JSON.stringify(companiesData, null, 2));
+
+        const companies = companiesData.data || companiesData;
+        if (Array.isArray(companies) && companies.length > 0) {
+          // For team members/admins, this returns their authorized companies
+          const company = companies[0];
+          const companyId = company.id || company.company_id;
+          if (companyId) {
+            console.log(`[getCompanyFromExperience] Found company from /v5/me/companies: ${companyId}`);
+            return {
+              whopCompanyId: companyId,
+              companyName: company.title || company.name || "My Company",
+            };
+          }
+        }
+      } else {
+        console.log(`[getCompanyFromExperience] /v5/me/companies returned ${companiesResponse.status}`);
+      }
+    } catch (e) {
+      console.log(`[getCompanyFromExperience] /v5/me/companies failed:`, e);
+    }
+
+    // Method 0b: Try has_access endpoint
     try {
       console.log(`[getCompanyFromExperience] Trying user token API for experience ${experienceId}...`);
 
@@ -215,10 +252,11 @@ export const onboardUser = action({
     whopUserId: v.string(),
     experienceId: v.string(), // From URL params in frontend
     userToken: v.optional(v.string()), // User's JWT token for API calls
+    companyIdFromHeader: v.optional(v.string()), // Company ID if passed via header
   },
   handler: async (
     ctx,
-    { whopUserId, experienceId, userToken }
+    { whopUserId, experienceId, userToken, companyIdFromHeader }
   ): Promise<{
     success: boolean;
     redirectTo: string;
@@ -277,6 +315,28 @@ export const onboardUser = action({
         console.log(`[onboardUser] Found company by experienceId: ${company._id} (${company.name})`);
         whopCompanyId = company.whopCompanyId;
         companyName = company.name;
+      } else if (companyIdFromHeader) {
+        // Step 2.5: Use company ID from header if available
+        console.log(`[onboardUser] Using company ID from header: ${companyIdFromHeader}`);
+        whopCompanyId = companyIdFromHeader;
+        companyName = "My Company"; // Will be updated when we fetch company details
+
+        // Check if company already exists in our DB
+        company = await ctx.runQuery(
+          api.companies.queries.getCompanyByWhopId,
+          { whopCompanyId: companyIdFromHeader }
+        );
+
+        if (company) {
+          companyName = company.name;
+          // Update experienceId mapping if not set
+          if (!company.whopExperienceId) {
+            await ctx.runMutation(api.companies.mutations.updateExperienceId, {
+              companyId: company._id,
+              experienceId,
+            });
+          }
+        }
       } else {
         // Step 3: Try to get company info from Whop API
         console.log(`[onboardUser] Company not found by experienceId, trying Whop API...`);

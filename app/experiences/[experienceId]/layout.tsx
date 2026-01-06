@@ -76,12 +76,18 @@ const InnerLayout = ({ children }: LayoutProps) => {
           console.log("[Layout] Got company ID from header:", headerCompanyId);
         }
 
-        // Try to get company route from iframe SDK
+        // Try to get company route and view type from iframe SDK
         let companyRoute: string | undefined;
+        let viewType: string | undefined;
         if (iframeSdk?.getTopLevelUrlData) {
           try {
             const urlData = await iframeSdk.getTopLevelUrlData({});
             console.log("[Layout] Iframe SDK URL data:", JSON.stringify(urlData, null, 2));
+
+            // Capture viewType to determine if user is in admin area
+            // viewType can be: "app", "admin", "analytics", or "preview"
+            viewType = urlData?.viewType;
+            console.log("[Layout] View type:", viewType);
 
             // Try to extract company route from fullHref if companyRoute is malformed
             if (urlData?.fullHref) {
@@ -138,6 +144,7 @@ const InnerLayout = ({ children }: LayoutProps) => {
           userToken: token, // Pass user token for API calls
           companyIdFromHeader: headerCompanyId, // Pass company ID if available from header
           companyRoute: companyRoute, // Pass company route from iframe SDK
+          viewType: viewType, // Pass view type to determine admin status
         });
 
         if (!res.success) {

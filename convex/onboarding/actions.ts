@@ -254,10 +254,11 @@ export const onboardUser = action({
     userToken: v.optional(v.string()), // User's JWT token for API calls
     companyIdFromHeader: v.optional(v.string()), // Company ID if passed via header
     companyRoute: v.optional(v.string()), // Company route/slug from iframe SDK
+    viewType: v.optional(v.string()), // View type from iframe SDK: "app", "admin", "analytics", "preview"
   },
   handler: async (
     ctx,
-    { whopUserId, experienceId, userToken, companyIdFromHeader, companyRoute }
+    { whopUserId, experienceId, userToken, companyIdFromHeader, companyRoute, viewType }
   ): Promise<{
     success: boolean;
     redirectTo: string;
@@ -287,9 +288,13 @@ export const onboardUser = action({
     };
   }> => {
     try {
-      // Step 1: Verify user has access to our experience (using REST API)
-      // For now, we'll assume users have access if they can authenticate
-      const accessCheck = { hasAccess: true, accessLevel: 'customer' };
+      // Step 1: Determine access level based on viewType from iframe SDK
+      // viewType "admin", "analytics", or "preview" means the user is accessing from Whop admin/owner area
+      // viewType "app" means the user is accessing as a customer/member
+      console.log(`[onboardUser] View type from iframe SDK: ${viewType}`);
+      const accessLevel = (viewType === 'admin' || viewType === 'analytics' || viewType === 'preview') ? 'admin' : 'customer';
+      console.log(`[onboardUser] Determined access level: ${accessLevel}`);
+      const accessCheck = { hasAccess: true, accessLevel };
 
       if (!accessCheck.hasAccess) {
         return {

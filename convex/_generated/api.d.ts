@@ -51,6 +51,7 @@ import type * as templates_utils from "../templates/utils.js";
 import type * as test_checkEnv from "../test/checkEnv.js";
 import type * as test_testProducts from "../test/testProducts.js";
 import type * as test_testWhopAccess from "../test/testWhopAccess.js";
+import type * as test_testWhopApi from "../test/testWhopApi.js";
 import type * as uploadthing_actions from "../uploadthing/actions.js";
 import type * as uploadthing_config from "../uploadthing/config.js";
 import type * as usage_actions from "../usage/actions.js";
@@ -128,6 +129,7 @@ declare const fullApi: ApiFromModules<{
   "test/checkEnv": typeof test_checkEnv;
   "test/testProducts": typeof test_testProducts;
   "test/testWhopAccess": typeof test_testWhopAccess;
+  "test/testWhopApi": typeof test_testWhopApi;
   "uploadthing/actions": typeof uploadthing_actions;
   "uploadthing/config": typeof uploadthing_config;
   "usage/actions": typeof usage_actions;

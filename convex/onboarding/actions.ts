@@ -385,6 +385,27 @@ export const onboardUser = action({
             }
           } else {
             console.log(`[onboardUser] Company by route returned ${companyResponse.status}`);
+            // API lookup failed, but we have the route - use it as a fallback identifier
+            // Generate a temporary whopCompanyId from the route
+            whopCompanyId = `route_${companyRoute}`;
+            companyName = companyRoute.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            console.log(`[onboardUser] Using route as fallback company ID: ${whopCompanyId} (${companyName})`);
+
+            // Check if company already exists in our DB with this route-based ID
+            company = await ctx.runQuery(
+              api.companies.queries.getCompanyByWhopId,
+              { whopCompanyId }
+            );
+
+            if (company) {
+              companyName = company.name;
+              if (!company.whopExperienceId) {
+                await ctx.runMutation(api.companies.mutations.updateExperienceId, {
+                  companyId: company._id,
+                  experienceId,
+                });
+              }
+            }
           }
         } catch (routeError) {
           console.error(`[onboardUser] Company by route lookup failed:`, routeError);

@@ -495,17 +495,13 @@ export const onboardUser = action({
         }
       }
 
-      // Step 4: If company doesn't exist, handle based on role
+      // Step 4: If company doesn't exist, create it
+      // The first person to access the app becomes the admin
+      // This is safe because only Whop admins/owners can see the app in their admin area
       if (!company) {
-        // Only admins can create the company
-        if (accessCheck.accessLevel !== "admin") {
-          return {
-            success: false,
-            redirectTo: `/experiences/${experienceId}/setup-required`,
-            error:
-              "Your company hasn't been set up yet. Please contact your admin to complete the setup.",
-          };
-        }
+        // First person to access = admin (they can see the app in Whop admin area)
+        console.log(`[onboardUser] No company exists, first user ${whopUserId} will create it as admin`);
+        isFirstAdmin = true;
 
         // Admin - create company with ACTUAL name from Whop
         console.log(`[onboardUser] Creating new company: ${companyName} (${whopCompanyId})`);
@@ -531,14 +527,21 @@ export const onboardUser = action({
       }
 
       // Step 5: Determine user's role
-      const role = await determineUserRole(
-        whopUserId,
-        whopCompanyId,
-        accessCheck.accessLevel,
-        ctx
-      );
-
-      console.log("Role:", role);
+      // If this is the first user creating the company, they are admin
+      // Otherwise, determine role based on access level
+      let role: OurAppRole;
+      if (isFirstAdmin) {
+        role = "admin";
+        console.log(`[onboardUser] First admin for new company, role: admin`);
+      } else {
+        role = await determineUserRole(
+          whopUserId,
+          whopCompanyId,
+          accessCheck.accessLevel,
+          ctx
+        );
+        console.log(`[onboardUser] Determined role: ${role}`);
+      }
 
       // Step 6: Check if user already exists in our DB
       const existingUser = await ctx.runQuery(
@@ -763,6 +766,7 @@ export const onboardUser = action({
  * Helper: Determine user's role in our app
  *
  * Maps Whop access level to our internal role (admin/support/customer).
+ * Key rule: If no admins exist for a company, the first person becomes admin.
  */
 async function determineUserRole(
   whopUserId: string,
@@ -770,77 +774,83 @@ async function determineUserRole(
   accessLevel: string,
   ctx: any // Add ctx parameter to access our database
 ): Promise<OurAppRole> {
-  if (accessLevel === "customer") {
-    return "customer";
-  }
+  // First, check if this user already exists in our database
+  const existingUser = await ctx.runQuery(
+    api.users.queries.getUserByWhopUserId,
+    { whopUserId }
+  );
 
-  if (accessLevel === "admin") {
-    // First, check if this user already exists in our database
-    const existingUser = await ctx.runQuery(
-      api.users.queries.getUserByWhopUserId,
-      { whopUserId }
-    );
-
-    // If user already exists, check their role in this specific company
-    if (existingUser) {
-      const company = await ctx.runQuery(
-        api.companies.queries.getCompanyByWhopId,
-        { whopCompanyId }
-      );
-
-      if (company) {
-        const existingRole = await ctx.runQuery(
-          api.users.multi_company_helpers.getUserRoleInCompany,
-          {
-            userId: existingUser._id,
-            companyId: company._id,
-          }
-        );
-
-        if (existingRole) {
-          console.log(
-            `User ${whopUserId} already exists with role: ${existingRole} in company ${company._id}`
-          );
-          return existingRole;
-        }
-      }
-    }
-
-    // User doesn't exist yet - apply first-admin logic
-    // First, we need to get the company ID from our database
+  // If user already exists, check their role in this specific company
+  if (existingUser) {
     const company = await ctx.runQuery(
       api.companies.queries.getCompanyByWhopId,
       { whopCompanyId }
     );
 
-    if (!company) {
-      // Company doesn't exist yet, so this will be the first admin
-      console.log(`Company doesn't exist, ${whopUserId} will be first admin`);
-      return "admin";
-    }
+    if (company) {
+      const existingRole = await ctx.runQuery(
+        api.users.multi_company_helpers.getUserRoleInCompany,
+        {
+          userId: existingUser._id,
+          companyId: company._id,
+        }
+      );
 
-    // Check if any admins already exist for this company using junction table
-    const existingAdmins = await ctx.runQuery(
-      api.users.multi_company_helpers.getTeamMembersForCompany,
-      {
-        companyId: company._id,
+      if (existingRole) {
+        console.log(
+          `[determineUserRole] User ${whopUserId} already has role: ${existingRole} in company ${company._id}`
+        );
+        return existingRole;
       }
-    );
-
-    // Filter to only admins
-    const adminCount = existingAdmins.filter(
-      (member: any) => member.role === "admin"
-    ).length;
-
-    // If no admins exist yet, this person becomes admin
-    // Otherwise, they become support (can be promoted later)
-    const role = adminCount === 0 ? "admin" : "support";
-    console.log(
-      `Found ${adminCount} existing admins, ${whopUserId} will be: ${role}`
-    );
-    return role;
+    }
   }
 
-  // Fallback
+  // User doesn't have a role yet - check if company has any admins
+  const company = await ctx.runQuery(
+    api.companies.queries.getCompanyByWhopId,
+    { whopCompanyId }
+  );
+
+  if (!company) {
+    // Company doesn't exist yet, so this will be the first admin
+    console.log(`[determineUserRole] Company doesn't exist, ${whopUserId} will be first admin`);
+    return "admin";
+  }
+
+  // Check if any admins already exist for this company
+  const existingAdmins = await ctx.runQuery(
+    api.users.multi_company_helpers.getTeamMembersForCompany,
+    {
+      companyId: company._id,
+    }
+  );
+
+  // Filter to only admins
+  const adminCount = existingAdmins.filter(
+    (member: any) => member.role === "admin"
+  ).length;
+
+  // If no admins exist yet, this person becomes admin (regardless of accessLevel)
+  // This handles the case where viewType="app" but user is actually first admin
+  if (adminCount === 0) {
+    console.log(
+      `[determineUserRole] No admins exist for company ${company._id}, ${whopUserId} will be admin`
+    );
+    return "admin";
+  }
+
+  // Admins exist - use accessLevel to determine role
+  if (accessLevel === "admin") {
+    // New admin/team member - make them support (can be promoted later)
+    console.log(
+      `[determineUserRole] ${adminCount} admins exist, ${whopUserId} (accessLevel: admin) will be: support`
+    );
+    return "support";
+  }
+
+  // Regular customer
+  console.log(
+    `[determineUserRole] ${adminCount} admins exist, ${whopUserId} (accessLevel: ${accessLevel}) will be: customer`
+  );
   return "customer";
 }

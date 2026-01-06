@@ -91,11 +91,25 @@ const InnerLayout = ({ children }: LayoutProps) => {
 
             // Try to extract company route from fullHref if companyRoute is malformed
             if (urlData?.fullHref) {
+              console.log("[Layout] Full href:", urlData.fullHref);
+              // Reserved Whop paths that aren't company routes
+              const reservedPaths = ['joined', 'hub', 'admin', 'app', 'analytics', 'api', 'login', 'signup', 'settings'];
+
               // Parse URL like: https://whop.com/test-whop/hub/support-ai-chat-test/
-              const urlMatch = urlData.fullHref.match(/whop\.com\/([^\/]+)\//);
-              if (urlMatch && urlMatch[1]) {
-                companyRoute = urlMatch[1];
-                console.log("[Layout] Extracted company route from fullHref:", companyRoute);
+              // or: https://whop.com/joined/test-whop/hub/support-ai-chat-test/
+              const urlParts = urlData.fullHref.split('/');
+              const whopIndex = urlParts.findIndex((part: string) => part.includes('whop.com'));
+
+              if (whopIndex !== -1) {
+                // Look for first non-reserved path segment after whop.com
+                for (let i = whopIndex + 1; i < urlParts.length; i++) {
+                  const segment = urlParts[i];
+                  if (segment && !reservedPaths.includes(segment.toLowerCase())) {
+                    companyRoute = segment;
+                    console.log("[Layout] Extracted company route from fullHref:", companyRoute);
+                    break;
+                  }
+                }
               }
             }
 

@@ -24,9 +24,10 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[]) {
       const keyMatch = event.key.toLowerCase() === s.key.toLowerCase();
       const ctrlMatch = s.ctrlKey ? (event.ctrlKey || event.metaKey) : true;
       const metaMatch = s.metaKey ? event.metaKey : true;
-      const shiftMatch = s.shiftKey ? event.shiftKey : !event.shiftKey;
-      const altMatch = s.altKey ? event.altKey : !event.altKey;
-      
+      // Fix: If modifier not specified, allow any state (don't require it to be false)
+      const shiftMatch = s.shiftKey === undefined ? true : s.shiftKey === event.shiftKey;
+      const altMatch = s.altKey === undefined ? true : s.altKey === event.altKey;
+
       return keyMatch && ctrlMatch && metaMatch && shiftMatch && altMatch;
     });
     

@@ -18,8 +18,33 @@ export const getConversationPresence = query({
   args: {
     conversationId: v.id("conversations"),
     excludeUserId: v.optional(v.id("users")),
+    requestingUserId: v.optional(v.id("users")), // For authorization
   },
-  handler: async (ctx, { conversationId, excludeUserId }) => {
+  handler: async (ctx, { conversationId, excludeUserId, requestingUserId }) => {
+    // Authorization: Verify conversation exists and user has access
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation) {
+      throw new Error("Conversation not found");
+    }
+
+    // If requestingUserId provided, verify they have access to this conversation's company
+    if (requestingUserId) {
+      const user = await ctx.db.get(requestingUserId);
+      if (!user) {
+        throw new Error("User not found");
+      }
+      // Check if user belongs to the conversation's company
+      const userCompany = await ctx.db
+        .query("user_companies")
+        .withIndex("by_user_company", (q) =>
+          q.eq("userId", requestingUserId).eq("companyId", conversation.companyId)
+        )
+        .first();
+      if (!userCompany) {
+        throw new Error("User does not have access to this conversation");
+      }
+    }
+
     const now = Date.now();
 
     // Get all users typing in this conversation
@@ -105,8 +130,22 @@ export const getUserPresence = query({
 export const getCompanyPresence = query({
   args: {
     companyId: v.id("companies"),
+    requestingUserId: v.optional(v.id("users")), // For authorization
   },
-  handler: async (ctx, { companyId }) => {
+  handler: async (ctx, { companyId, requestingUserId }) => {
+    // Authorization: If requestingUserId provided, verify they belong to this company
+    if (requestingUserId) {
+      const userCompany = await ctx.db
+        .query("user_companies")
+        .withIndex("by_user_company", (q) =>
+          q.eq("userId", requestingUserId).eq("companyId", companyId)
+        )
+        .first();
+      if (!userCompany) {
+        throw new Error("User does not have access to this company");
+      }
+    }
+
     const now = Date.now();
 
     // Get all non-expired presence records for company
@@ -143,8 +182,27 @@ export const getCompanyPresence = query({
 export const getViewingAgents = query({
   args: {
     conversationId: v.id("conversations"),
+    requestingUserId: v.optional(v.id("users")), // For authorization
   },
-  handler: async (ctx, { conversationId }) => {
+  handler: async (ctx, { conversationId, requestingUserId }) => {
+    // Authorization: Verify conversation exists and user has access
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation) {
+      throw new Error("Conversation not found");
+    }
+
+    if (requestingUserId) {
+      const userCompany = await ctx.db
+        .query("user_companies")
+        .withIndex("by_user_company", (q) =>
+          q.eq("userId", requestingUserId).eq("companyId", conversation.companyId)
+        )
+        .first();
+      if (!userCompany) {
+        throw new Error("User does not have access to this conversation");
+      }
+    }
+
     const now = Date.now();
 
     const viewingPresence = await ctx.db

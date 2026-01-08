@@ -120,10 +120,31 @@ export const listConversationsForAgents = query({
 
     const conversations = await conversationsQuery.take(limit);
 
+    // OPTIMIZATION: Batch load all customers upfront to avoid N+1 queries
+    const customerIds = [...new Set(conversations.map((c) => c.customerId))];
+    const customersArray = await Promise.all(
+      customerIds.map((id) => ctx.db.get(id))
+    );
+    const customerMap = new Map(
+      customersArray.filter(Boolean).map((c) => [c!._id, c])
+    );
+
+    // OPTIMIZATION: Batch load all participating agents upfront
+    const allAgentIds = [
+      ...new Set(conversations.flatMap((c) => c.participatingAgents)),
+    ];
+    const agentsArray = await Promise.all(
+      allAgentIds.map((id) => ctx.db.get(id))
+    );
+    const agentMap = new Map(
+      agentsArray.filter(Boolean).map((a) => [a!._id, a])
+    );
+
     // Enrich with customer info, latest message, and agent details
     const enriched = await Promise.all(
       conversations.map(async (conversation) => {
-        const customer = await ctx.db.get(conversation.customerId);
+        // Use cached customer from map
+        const customer = customerMap.get(conversation.customerId);
 
         // Get latest message for preview
         const latestMessage = await ctx.db
@@ -143,19 +164,32 @@ export const listConversationsForAgents = query({
           .order("desc")
           .take(50);
 
-        // Enrich messages with agent avatar URLs
-        const enrichedMessages = await Promise.all(
-          recentMessages.map(async (message) => {
-            if (message.agentId) {
-              const agent = await ctx.db.get(message.agentId);
-              return {
-                ...message,
-                agentAvatar: agent?.avatarUrl,
-              };
-            }
-            return message;
-          })
-        );
+        // Collect all agent IDs from messages for batch loading
+        const messageAgentIds = [
+          ...new Set(
+            recentMessages.filter((m) => m.agentId).map((m) => m.agentId!)
+          ),
+        ];
+        // Batch load message agents not already in agentMap
+        const newAgentIds = messageAgentIds.filter((id) => !agentMap.has(id));
+        if (newAgentIds.length > 0) {
+          const newAgents = await Promise.all(
+            newAgentIds.map((id) => ctx.db.get(id))
+          );
+          newAgents.filter(Boolean).forEach((a) => agentMap.set(a!._id, a));
+        }
+
+        // Enrich messages with agent avatar URLs using cached agents
+        const enrichedMessages = recentMessages.map((message) => {
+          if (message.agentId) {
+            const agent = agentMap.get(message.agentId);
+            return {
+              ...message,
+              agentAvatar: agent?.avatarUrl,
+            };
+          }
+          return message;
+        });
 
         // Return in chronological order (oldest first) for chat display
         const messagesForDisplay = enrichedMessages.reverse();
@@ -171,10 +205,10 @@ export const listConversationsForAgents = query({
           )
           .take(1);
 
-        // Enrich participating agents with full details
-        const participatingAgentsEnriched = await Promise.all(
-          conversation.participatingAgents.map(async (agentId) => {
-            const agent = await ctx.db.get(agentId);
+        // Enrich participating agents with full details using cached agents
+        const participatingAgentsEnriched = conversation.participatingAgents
+          .map((agentId) => {
+            const agent = agentMap.get(agentId);
             if (!agent) return null;
 
             const initials = agent.displayName
@@ -191,10 +225,7 @@ export const listConversationsForAgents = query({
               avatar: agent.avatarUrl,
             };
           })
-        );
-
-        // Filter out null agents (in case some were deleted)
-        const validAgents = participatingAgentsEnriched.filter(Boolean);
+          .filter(Boolean);
 
         // Determine delivery status from latest message
         const now = Date.now();
@@ -241,7 +272,7 @@ export const listConversationsForAgents = query({
           // Enhanced fields for frontend
           lastMessageFrom: latestMessage[0]?.role || null,
           deliveryStatus,
-          participatingAgentsEnriched: validAgents,
+          participatingAgentsEnriched,
           handoffReason: conversation.handoffReason,
         };
       })

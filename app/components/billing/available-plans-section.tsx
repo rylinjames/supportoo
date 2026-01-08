@@ -116,13 +116,16 @@ export function AvailablePlansSection({
     }
   };
 
-  const handleMidTierDowngrade = async (
+  // Shared function for plan changes (upgrade/downgrade)
+  const processPlanChange = async (
     targetPlanName: string,
-    targetPlan: Plan
+    successMessage: string,
+    onComplete: () => void
   ) => {
     try {
       if (!userData?.user.whopUserId) {
         toast.error("User information not found");
+        onComplete();
         return;
       }
 
@@ -144,170 +147,72 @@ export function AvailablePlansSection({
         targetPlanName: targetPlanName as "pro" | "elite",
         whopUserId: userData.user.whopUserId,
         experienceId: experienceId,
-        allowDowngrade: true, // Bypass hierarchy check for downgrades
+        allowDowngrade: true,
       });
 
       if (!isLoaded) {
         toast.error("Payment system not ready. Please refresh and try again.");
+        onComplete();
         return;
       }
 
-      // Step 3: Open Whop modal for new subscription
+      // Step 3: Open Whop modal
       const result = await chargeUserWithModal({
         planId: sessionData.planId,
+        sessionId: sessionData.checkoutSessionId,
         status: "pending",
         amount: sessionData.planPrice,
         title: sessionData.planTitle,
       });
 
       if (result.success) {
-        toast.success(
-          `Successfully downgraded! Your ${targetPlanName} plan is now active.`
-        );
+        toast.success(successMessage);
       } else {
-        toast.error(
-          result.error ||
-            "Payment failed. Your original plan has been cancelled and will remain active until period end."
-        );
+        toast.error(result.error || "Payment failed");
       }
+
+      onComplete();
     } catch (error) {
-      console.error("Error with mid-tier downgrade:", error);
+      console.error("Error processing plan change:", error);
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to process downgrade. Please contact support."
+          : "Failed to process plan change. Please try again."
       );
+      onComplete();
     }
   };
 
   const handleUpgradeConfirm = async () => {
-    try {
-      if (!userData?.user.whopUserId || !pendingUpgrade) {
-        toast.error("User information not found");
-        setShowUpgradeDialog(false);
-        return;
-      }
-
-      const { targetPlanName, targetPlan } = pendingUpgrade;
-
-      // Step 1: Cancel current membership
-      toast.info("Canceling current membership...");
-
-      const cancelResult = await cancelMembership({
-        companyId: companyId as Id<"companies">,
-        whopUserId: userData.user.whopUserId,
-      });
-
-      console.log("Membership cancelled:", cancelResult);
-
-      // Step 2: Create checkout session for new plan
-      toast.info("Opening checkout for new plan...");
-
-      const sessionData = await createCheckoutSession({
-        companyId: companyId as Id<"companies">,
-        targetPlanName: targetPlanName as "pro" | "elite",
-        whopUserId: userData.user.whopUserId,
-        experienceId: experienceId,
-        allowDowngrade: true, // Bypass hierarchy check after cancellation
-      });
-
-      if (!isLoaded) {
-        toast.error("Payment system not ready. Please refresh and try again.");
-        setShowUpgradeDialog(false);
-        return;
-      }
-
-      // Step 3: Open Whop modal
-      const result = await chargeUserWithModal({
-        planId: sessionData.planId,
-        sessionId: sessionData.checkoutSessionId,
-        status: "pending",
-        amount: sessionData.planPrice,
-        title: sessionData.planTitle,
-      });
-
-      if (result.success) {
-        toast.success("Payment successful! Plan upgraded.");
-      } else {
-        toast.error(result.error || "Payment failed");
-      }
-
+    if (!pendingUpgrade) {
       setShowUpgradeDialog(false);
-      setPendingUpgrade(null);
-    } catch (error) {
-      console.error("Error upgrading plan:", error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to upgrade plan. Please try again."
-      );
-      setShowUpgradeDialog(false);
+      return;
     }
+
+    await processPlanChange(
+      pendingUpgrade.targetPlanName,
+      "Payment successful! Plan upgraded.",
+      () => {
+        setShowUpgradeDialog(false);
+        setPendingUpgrade(null);
+      }
+    );
   };
 
   const handleMidTierDowngradeConfirm = async () => {
-    try {
-      if (!userData?.user.whopUserId || !pendingMidTierDowngrade) {
-        toast.error("User information not found");
-        setShowMidTierDowngradeDialog(false);
-        return;
-      }
-
-      const { targetPlanName, targetPlan } = pendingMidTierDowngrade;
-
-      // Step 1: Cancel current membership
-      toast.info("Canceling current membership...");
-
-      const cancelResult = await cancelMembership({
-        companyId: companyId as Id<"companies">,
-        whopUserId: userData.user.whopUserId,
-      });
-
-      console.log("Membership cancelled:", cancelResult);
-
-      // Step 2: Create checkout session for new plan
-      toast.info("Opening checkout for new plan...");
-
-      const sessionData = await createCheckoutSession({
-        companyId: companyId as Id<"companies">,
-        targetPlanName: targetPlanName as "pro" | "elite",
-        whopUserId: userData.user.whopUserId,
-        experienceId: experienceId,
-        allowDowngrade: true, // Bypass hierarchy check for downgrades
-      });
-
-      if (!isLoaded) {
-        toast.error("Payment system not ready. Please refresh and try again.");
-        setShowMidTierDowngradeDialog(false);
-        return;
-      }
-
-      // Step 3: Open Whop modal
-      const result = await chargeUserWithModal({
-        planId: sessionData.planId,
-        sessionId: sessionData.checkoutSessionId,
-        status: "pending",
-        amount: sessionData.planPrice,
-        title: sessionData.planTitle,
-      });
-
-      if (result.success) {
-        toast.success("Payment successful! Plan changed.");
-      } else {
-        toast.error(result.error || "Payment failed");
-      }
-
+    if (!pendingMidTierDowngrade) {
       setShowMidTierDowngradeDialog(false);
-      setPendingMidTierDowngrade(null);
-    } catch (error) {
-      console.error("Error downgrading plan:", error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to downgrade plan. Please try again."
-      );
-      setShowMidTierDowngradeDialog(false);
+      return;
     }
+
+    await processPlanChange(
+      pendingMidTierDowngrade.targetPlanName,
+      "Payment successful! Plan changed.",
+      () => {
+        setShowMidTierDowngradeDialog(false);
+        setPendingMidTierDowngrade(null);
+      }
+    );
   };
 
   // Sort plans: Free, Pro, Elite

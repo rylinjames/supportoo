@@ -42,15 +42,11 @@ export const syncProducts = action({
 
       console.log(`[syncProducts] Fetching products for Whop company: ${company.whopCompanyId}`);
 
-      // Get Whop API credentials
+      // Get App API key for multi-tenant product access
+      // Per Whop docs: "Use app api keys when you are building an app and need to access data on companies that have installed your app"
+      // Access company-specific data by specifying company_id parameter
       const { apiKey } = getWhopConfig();
-
-      // Determine which token to use:
-      // - If userToken is provided, use it (for accessing products of companies that installed the app)
-      // - Otherwise fall back to appApiKey (only works for app owner's company)
-      const authToken = userToken || apiKey;
-      const tokenType = userToken ? 'user_token' : 'app_api_key';
-      console.log(`[syncProducts] Using ${tokenType} for API authentication`);
+      console.log(`[syncProducts] Using App API key with company_id parameter`);
 
       // Mark all existing products as outdated before sync
       const outdatedCount = await ctx.runMutation(
@@ -69,26 +65,24 @@ export const syncProducts = action({
         console.log(`[syncProducts] Company Name: ${company.name}`);
         console.log(`[syncProducts] Company ID (Convex): ${companyId}`);
         console.log(`[syncProducts] Company ID (Whop): ${company.whopCompanyId}`);
-        console.log(`[syncProducts] Auth Method: ${tokenType.toUpperCase()}`);
-        console.log(`[syncProducts] Has User Token: ${!!userToken}`);
+        console.log(`[syncProducts] Auth Method: APP_API_KEY with v5/app/products`);
         console.log(`[syncProducts] ----------------------------------------`);
 
         let page = 1;
         let hasMore = true;
 
         while (hasMore) {
-          // Use /v5/me/products with userToken (returns user's company products)
-          // Fall back to v2 API with company_id filter when no userToken
-          const url = userToken
-            ? `https://api.whop.com/api/v5/me/products?page=${page}&per=50`
-            : `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=${page}&per_page=50`;
+          // Use v5 /app/products endpoint - returns ALL products from ALL installed companies
+          // Filter by company_id in the response to get only this company's products
+          // This works automatically for any company that has installed the app
+          const url: string = `https://api.whop.com/api/v5/app/products?page=${page}&per=100`;
 
           console.log(`[syncProducts] Fetching from: ${url}`);
 
-          const response = await fetch(url, {
+          const response: Response = await fetch(url, {
             method: 'GET',
             headers: {
-              'Authorization': `Bearer ${authToken}`,
+              'Authorization': `Bearer ${apiKey}`,
               'Accept': 'application/json',
             }
           });
@@ -98,17 +92,15 @@ export const syncProducts = action({
             console.error(`[syncProducts] API error: ${errorText}`);
 
             // Check if it's a permission/auth error
-            if (errorText.includes('forbidden') || errorText.includes('not authorized') || errorText.includes('unauthorized')) {
-              console.log(`[syncProducts] ⚠️ AUTH ERROR - Token may be invalid or expired`);
+            if (errorText.includes('forbidden') || errorText.includes('not authorized') || errorText.includes('unauthorized') || errorText.includes('invalid') || errorText.includes('Bot API key')) {
+              console.log(`[syncProducts] ⚠️ AUTH ERROR - Make sure you're using an App API Key, not a Company/Bot API Key`);
 
               return {
                 success: false,
                 syncedCount: 0,
                 deletedCount: 0,
                 errors: [
-                  userToken
-                    ? "Authentication failed. Please refresh the page and try again."
-                    : "Permission denied: This company needs to re-authorize the app."
+                  "API Key error: Make sure WHOP_API_KEY is set to your App API Key from the developer dashboard, not a Company API Key."
                 ],
               };
             }
@@ -116,18 +108,23 @@ export const syncProducts = action({
             break;
           }
 
-          const data = await response.json();
+          const data: any = await response.json();
+          const fetchedProducts: any[] = data.data || [];
 
-          // Handle response format
-          const products = data.data || data;
-          if (Array.isArray(products)) {
-            allProducts.push(...products);
-            console.log(`[syncProducts] Fetched ${products.length} products (page ${page})`);
+          // Filter products for THIS company only
+          const companyProducts = fetchedProducts.filter(
+            (p: any) => p.company_id === company.whopCompanyId
+          );
+
+          if (companyProducts.length > 0) {
+            allProducts.push(...companyProducts);
+            console.log(`[syncProducts] Fetched ${fetchedProducts.length} total, ${companyProducts.length} for this company (page ${page})`);
+          } else {
+            console.log(`[syncProducts] Fetched ${fetchedProducts.length} total, 0 for this company (page ${page})`);
           }
 
-          // Check pagination (v5 and v2 both use similar pagination structure)
-          const totalPages = data.pagination?.total_pages || data.pagination?.total_page || 1;
-          if (data.pagination && page < totalPages) {
+          // Check pagination
+          if (data.pagination?.next_page) {
             page++;
             hasMore = true;
           } else {
@@ -258,40 +255,44 @@ async function syncSingleProduct(
   whopProduct: any
 ) {
   // Map Whop product data to our schema
+  // Note: Whop API uses "headline" for description, not "description"
+  const description = whopProduct.headline || whopProduct.description || "";
+
   const productData = {
     companyId,
     whopProductId: whopProduct.id,
     whopCompanyId: whopProduct.company_id || whopProduct.companyId || whopCompanyId,
     title: whopProduct.title || whopProduct.name || "Untitled Product",
-    description: whopProduct.description,
-    
-    // Price handling - Whop usually provides price in cents
+    description,
+
+    // Price handling - Note: Whop Products API doesn't return pricing
+    // Pricing comes from the Plans API which should be synced separately
     price: whopProduct.price ? Math.round(whopProduct.price) : undefined,
     currency: whopProduct.currency || "USD",
-    
+
     // Map product type from Whop categories
-    productType: mapWhopProductType(whopProduct.category || whopProduct.type),
-    
+    productType: mapWhopProductType(whopProduct.business_type || whopProduct.category || whopProduct.type),
+
     // Map access type from Whop subscription info
     accessType: mapWhopAccessType(whopProduct),
-    
+
     // Map billing period if it's a subscription
     billingPeriod: mapWhopBillingPeriod(whopProduct),
-    
-    // Status
-    isActive: whopProduct.is_active !== false, // Default to true if not specified
-    isVisible: whopProduct.is_visible !== false, // Default to true if not specified
-    
+
+    // Status - Whop API uses "visibility" field
+    isActive: whopProduct.visibility !== "archived",
+    isVisible: whopProduct.visibility === "visible",
+
     // Additional metadata
-    category: whopProduct.category,
+    category: whopProduct.category || whopProduct.business_type,
     tags: whopProduct.tags || [],
     imageUrl: whopProduct.image_url || whopProduct.image || whopProduct.thumbnail,
-    
+
     // Extract features and benefits from description or dedicated fields
-    features: whopProduct.features || extractFeaturesFromText(whopProduct.description),
-    benefits: whopProduct.benefits || extractBenefitsFromText(whopProduct.description),
+    features: whopProduct.features || extractFeaturesFromText(description),
+    benefits: whopProduct.benefits || extractBenefitsFromText(description),
     targetAudience: whopProduct.target_audience || whopProduct.audience,
-    
+
     // Store raw data for debugging
     rawWhopData: whopProduct,
   };
@@ -423,7 +424,7 @@ function extractBenefitsFromText(description: string | undefined): string[] {
 }
 
 /**
- * Test the Whop API connection and fetch a small sample of products
+ * Test the Whop API connection and fetch products (with pagination)
  */
 export const testWhopConnection = action({
   args: {
@@ -444,39 +445,64 @@ export const testWhopConnection = action({
         throw new Error("No Whop company ID found");
       }
 
+      // Get App API key for multi-tenant product access
       const { apiKey } = getWhopConfig();
-      const authToken = userToken || apiKey;
-      const tokenType = userToken ? 'user_token' : 'app_api_key';
 
-      // Try to fetch products using appropriate API based on token type
-      // Use /v5/me/products with user token to get products the user's company owns
-      const url = userToken
-        ? `https://api.whop.com/api/v5/me/products?page=1&per=5`
-        : `https://api.whop.com/api/v2/products?company_id=${company.whopCompanyId}&page=1&per_page=5`;
+      console.log(`[testWhopConnection] Using App API key with v5/app/products`);
+      console.log(`[testWhopConnection] Looking for company_id: ${company.whopCompanyId}`);
 
-      console.log(`[testWhopConnection] Using ${tokenType}, URL: ${url}`);
+      // Paginate through all pages to find this company's products
+      let allCompanyProducts: any[] = [];
+      let page = 1;
+      let hasMore = true;
+      let totalFetched = 0;
 
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Accept': 'application/json',
+      while (hasMore && page <= 10) { // Limit to 10 pages for test
+        const url = `https://api.whop.com/api/v5/app/products?page=${page}&per=100`;
+
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Accept': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          // Check for API key type error
+          if (errorText.includes('Bot API key')) {
+            throw new Error(`Wrong API Key type: You're using a Company/Bot API Key. Please use the App API Key from your app's developer page at https://whop.com/dashboard/developer`);
+          }
+          throw new Error(`API error: ${errorText}`);
         }
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${errorText}`);
+
+        const data = await response.json();
+        const fetchedProducts = data.data || [];
+        totalFetched += fetchedProducts.length;
+
+        // Filter for this company's products
+        const companyProducts = fetchedProducts.filter((p: any) => p.company_id === company.whopCompanyId);
+        if (companyProducts.length > 0) {
+          allCompanyProducts.push(...companyProducts);
+          console.log(`[testWhopConnection] Page ${page}: Found ${companyProducts.length} products for this company`);
+        }
+
+        // Check pagination
+        if (data.pagination?.next_page) {
+          page++;
+        } else {
+          hasMore = false;
+        }
       }
-      
-      const data = await response.json();
-      const products = data.data || [];
+
+      console.log(`[testWhopConnection] Total fetched: ${totalFetched}, For this company: ${allCompanyProducts.length}`);
 
       return {
         success: true,
-        message: `Successfully connected to Whop using ${tokenType}. Found ${products.length} products (total: ${data.pagination?.total_count || 0}).`,
-        tokenType,
+        message: `Successfully connected to Whop. Found ${allCompanyProducts.length} products for this company.`,
         companyId: company.whopCompanyId,
-        sampleProducts: products.map((p: any) => ({
+        tokenType: "APP_API_KEY",
+        sampleProducts: allCompanyProducts.slice(0, 10).map((p: any) => ({
           id: p.id,
           title: p.title || p.name || "Untitled",
           type: p.product_type || p.type || "product",

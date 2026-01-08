@@ -25,12 +25,43 @@ export const generateChatResponse = action({
     console.log("📝 Conversation ID:", conversationId);
     console.log("📝 Message ID:", messageId);
     console.log("🕐 Timestamp:", new Date().toISOString());
-    
+
     // Store these outside try block so they're available in catch
     let aiMessageCreated = false;
     let conversation: any = null;
 
     try {
+      // AUTHORIZATION: Verify the triggering message exists and is valid
+      const triggeringMessage = await ctx.runQuery(
+        api.messages.queries.getMessageById,
+        { messageId }
+      );
+
+      if (!triggeringMessage) {
+        console.error("❌ AUTHORIZATION FAILED: Message not found:", messageId);
+        throw new Error("Invalid message ID - authorization failed");
+      }
+
+      // Verify message belongs to this conversation
+      if (triggeringMessage.conversationId !== conversationId) {
+        console.error("❌ AUTHORIZATION FAILED: Message/conversation mismatch");
+        throw new Error("Message does not belong to conversation - authorization failed");
+      }
+
+      // Verify message is from a customer (AI should only respond to customer messages)
+      if (triggeringMessage.role !== "customer") {
+        console.error("❌ AUTHORIZATION FAILED: Not a customer message");
+        throw new Error("Can only generate AI response for customer messages");
+      }
+
+      // Verify message is recent (within last 5 minutes) to prevent replay attacks
+      const messageAge = Date.now() - triggeringMessage.timestamp;
+      const MAX_MESSAGE_AGE_MS = 5 * 60 * 1000; // 5 minutes
+      if (messageAge > MAX_MESSAGE_AGE_MS) {
+        console.error("❌ AUTHORIZATION FAILED: Message too old:", messageAge, "ms");
+        throw new Error("Message too old for AI response - possible replay attack");
+      }
+
       // 1. Get conversation and company data
       console.log("\n📊 STEP 1: Fetching conversation data...");
       conversation = await ctx.runQuery(
@@ -42,6 +73,13 @@ export const generateChatResponse = action({
         console.error("❌ ERROR: Conversation not found for ID:", conversationId);
         throw new Error("Conversation not found");
       }
+
+      // Verify conversation is in a state that should receive AI responses
+      if (conversation.status !== "ai_handling" && conversation.status !== "new") {
+        console.error("❌ AUTHORIZATION FAILED: Conversation not in AI handling state:", conversation.status);
+        throw new Error("Conversation not in AI handling state");
+      }
+
       console.log("✅ Conversation found:", {
         id: conversation._id,
         status: conversation.status,
@@ -115,12 +153,20 @@ export const generateChatResponse = action({
         timestamp: new Date(messages[messages.length - 1].timestamp).toISOString()
       } : "none");
 
-      // 3. Get company products for AI context
+      // 3. Get company products for AI context (only visible and active products)
       console.log("\n📊 STEP 3.5: Fetching company products...");
-      const products = await ctx.runQuery(api.products.queries.getActiveProducts, {
+      const products = await ctx.runQuery(api.products.queries.getVisibleActiveProducts, {
         companyId: conversation.companyId,
       });
       console.log("🛍️ Products fetched:", products.length);
+
+      // 3.6 Get pricing plans for AI context
+      console.log("\n📊 STEP 3.6: Fetching pricing plans...");
+      const plansByProduct = await ctx.runQuery(api.whopPlans.queries.getVisiblePlansForAI, {
+        companyId: conversation.companyId,
+      });
+      const planCount = Object.values(plansByProduct).flat().length;
+      console.log("💰 Plans fetched:", planCount);
 
       // 4. Build the system message with company context
       console.log("\n📊 STEP 4: Building system message...");
@@ -145,7 +191,7 @@ export const generateChatResponse = action({
         });
       }
 
-      // Build products context
+      // Build products context with pricing from plans
       let productsContext = "";
       if (products.length > 0) {
         console.log("✅ Building products context:", {
@@ -153,37 +199,84 @@ export const generateChatResponse = action({
           productTitles: products.slice(0, 3).map((p: any) => p.title)
         });
 
+        // Helper function to format price - handles FREE plans correctly
+        const formatPrice = (priceInCents: number | undefined, currency: string) => {
+          if (priceInCents === undefined || priceInCents === null) return null;
+          if (priceInCents === 0) return "Free";
+          const price = (priceInCents / 100).toFixed(2);
+          return `${currency.toUpperCase()} $${price}`;
+        };
+
+        // Helper function to format billing period (days to readable)
+        const formatBillingPeriod = (days: number | undefined) => {
+          if (!days) return "";
+          if (days === 30 || days === 31) return "/month";
+          if (days === 365 || days === 366) return "/year";
+          if (days === 7) return "/week";
+          if (days === 1) return "/day";
+          return `/${days} days`;
+        };
+
         productsContext = `\n\nCOMPANY PRODUCTS & SERVICES:
 ${products.map((product: any) => {
   let productInfo = `• ${product.title}`;
-  
-  if (product.price && product.currency) {
+
+  // Get plans for this product from plansByProduct
+  const productPlans = plansByProduct[product.whopProductId] || [];
+
+  // Add pricing from plans
+  if (productPlans.length > 0) {
+    productInfo += `\n  Pricing Options:`;
+    for (const plan of productPlans) {
+      const price = formatPrice(plan.initialPrice, plan.currency);
+      // Always show the plan, even if FREE
+      if (price === "Free") {
+        productInfo += `\n    - ${plan.title}: Free`;
+      } else if (price) {
+        if (plan.planType === "one_time") {
+          productInfo += `\n    - ${plan.title}: ${price} (one-time purchase)`;
+        } else {
+          const period = formatBillingPeriod(plan.billingPeriod);
+          productInfo += `\n    - ${plan.title}: ${price}${period}`;
+          if (plan.trialPeriodDays) {
+            productInfo += ` (${plan.trialPeriodDays}-day free trial)`;
+          }
+        }
+      }
+    }
+  } else if (product.price && product.currency) {
+    // Fallback to product price if no plans (legacy)
     const price = (product.price / 100).toFixed(2);
     productInfo += ` - ${product.currency} $${price}`;
-    
+
     if (product.accessType === "subscription" && product.billingPeriod) {
       productInfo += ` per ${product.billingPeriod.replace('ly', '')}`;
     } else if (product.accessType === "lifetime") {
       productInfo += ` (lifetime access)`;
     }
   }
-  
+
+  // Include more of the description (increased from 200 to 500 chars)
   if (product.description) {
-    productInfo += `\n  Description: ${product.description.substring(0, 200)}${product.description.length > 200 ? '...' : ''}`;
+    productInfo += `\n  Description: ${product.description.substring(0, 500)}${product.description.length > 500 ? '...' : ''}`;
   }
-  
+
   if (product.productType) {
     productInfo += `\n  Type: ${product.productType.replace('_', ' ')}`;
   }
-  
+
+  // Include more features (increased from 3 to 5)
   if (product.features && product.features.length > 0) {
-    productInfo += `\n  Key Features: ${product.features.slice(0, 3).join(', ')}`;
+    productInfo += `\n  Key Features: ${product.features.slice(0, 5).join(', ')}`;
+    if (product.features.length > 5) {
+      productInfo += `, and ${product.features.length - 5} more`;
+    }
   }
-  
+
   return productInfo;
 }).join('\n\n')}
 
-IMPORTANT: When customers ask about products, pricing, features, or subscriptions, refer to the exact information above. Always provide accurate pricing and billing information.`;
+IMPORTANT: When customers ask about products, pricing, features, or subscriptions, refer to the exact information above. Always provide accurate pricing and billing information. If a product has multiple pricing options (monthly, yearly, lifetime, or free), explain all available options.`;
       } else {
         console.log("⚠️ No products found for this company");
         productsContext = "";
@@ -317,8 +410,7 @@ ${company.aiSystemPrompt || ""}`;
       // DO NOT REVERSE - messages are already oldest first from getMessages query
       console.log("\n🔴 BUILDING CHAT MESSAGES FOR OPENAI:");
       
-      // CRITICAL: Find the triggering message that we're responding to
-      const triggeringMessage = await ctx.runQuery(api.messages.queries.getMessage, { messageId });
+      // CRITICAL: Use the triggering message we already fetched for authorization
       console.log("🎯 TRIGGERING MESSAGE:", {
         id: messageId,
         role: triggeringMessage?.role,

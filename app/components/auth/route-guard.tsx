@@ -53,33 +53,30 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     const customerAllowedRoutes = ["/customer-view"];
     const supportAllowedRoutes = ["/", "/settings", "/customer-test", "/workspace"];
 
-    // TEMPORARILY: Allow all users to access all routes for testing
-    return true;
-    
-    // Original role-based logic (disabled for testing)
-    // if (role === "customer") {
-    //   // Customer: Only allow /customer-view with correct customerId
-    //   const customerId = searchParams.get("customerId");
-    //   const expectedCustomerId = userData.user._id;
+    // Role-based route access control
+    if (role === "customer") {
+      // Customer: Only allow /customer-view with correct customerId
+      const customerId = searchParams.get("customerId");
+      const expectedCustomerId = userData.user._id;
 
-    //   return (
-    //     routeWithoutQuery === "/customer-view" &&
-    //     customerId === expectedCustomerId
-    //   );
-    // } else if (role === "support") {
-    //   // Support: Can handle tickets and access workspace
-    //   return supportAllowedRoutes.includes(routeWithoutQuery);
-    // } else if (role === "admin") {
-    //   // Admin: Allow all routes except customer-view (only in dev mode)
-    //   if (routeWithoutQuery === "/customer-view") {
-    //     // Only allow customer-view in development mode
-    //     return process.env.NODE_ENV === "development";
-    //   }
-    //   // Allow all other routes for admins
-    //   return true;
-    // }
-    // // Unknown role - deny access
-    // return false;
+      return (
+        routeWithoutQuery === "/customer-view" &&
+        customerId === expectedCustomerId
+      );
+    } else if (role === "support") {
+      // Support: Can handle tickets and access workspace
+      return supportAllowedRoutes.includes(routeWithoutQuery);
+    } else if (role === "admin") {
+      // Admin: Allow all routes except customer-view (only in dev mode)
+      if (routeWithoutQuery === "/customer-view") {
+        // Only allow customer-view in development mode
+        return process.env.NODE_ENV === "development";
+      }
+      // Allow all other routes for admins
+      return true;
+    }
+    // Unknown role - deny access
+    return false;
   }, [
     pathname,
     searchParams,
@@ -118,24 +115,22 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     // Build redirect URLs
     const baseUrl = `/experiences/${experienceId}`;
 
-    // TEMPORARILY DISABLED: Allow customers to access admin dashboard for testing
-    // if (role === "customer") {
-    //   const customerId = searchParams.get("customerId");
-    //   const expectedCustomerId = userData.user._id;
+    // Customer redirect logic
+    if (role === "customer") {
+      const customerId = searchParams.get("customerId");
+      const expectedCustomerId = userData.user._id;
 
-    //   if (
-    //     routeWithoutQuery !== "/customer-view" ||
-    //     customerId !== expectedCustomerId
-    //   ) {
-    //     // Redirect to customer view with correct customerId
-    //     router.replace(
-    //       `${baseUrl}/customer-view?customerId=${expectedCustomerId}`
-    //     );
-    //     return;
-    //   }
-    // }
-    
-    if (role === "support") {
+      if (
+        routeWithoutQuery !== "/customer-view" ||
+        customerId !== expectedCustomerId
+      ) {
+        // Redirect to customer view with correct customerId
+        router.replace(
+          `${baseUrl}/customer-view?customerId=${expectedCustomerId}`
+        );
+        return;
+      }
+    } else if (role === "support") {
       const supportAllowedRoutes = ["/", "/settings", "/customer-test", "/workspace"];
       if (!supportAllowedRoutes.includes(routeWithoutQuery)) {
         // Redirect to support dashboard (root)

@@ -14,13 +14,24 @@ import { csrfMiddleware } from "@/app/lib/csrf";
  * - membership.went_invalid - When a subscription ends/cancels
  */
 
+// Validate required environment variables
+const webhookSecret = process.env.WHOP_WEBHOOK_SECRET;
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+
+if (!webhookSecret) {
+  throw new Error("Missing WHOP_WEBHOOK_SECRET environment variable");
+}
+if (!convexUrl) {
+  throw new Error("Missing NEXT_PUBLIC_CONVEX_URL environment variable");
+}
+
 // Create webhook validator with secret
 const validateWebhook = makeWebhookValidator({
-  webhookSecret: process.env.WHOP_WEBHOOK_SECRET!,
+  webhookSecret,
 });
 
 // Initialize Convex client
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+const convex = new ConvexHttpClient(convexUrl);
 
 export async function POST(request: Request) {
   try {

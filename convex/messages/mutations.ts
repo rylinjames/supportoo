@@ -43,6 +43,12 @@ export const createMessage = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    // Validate message length to prevent token abuse
+    const MAX_MESSAGE_LENGTH = 10000;
+    if (args.content.length > MAX_MESSAGE_LENGTH) {
+      throw new Error(`Message too long. Maximum ${MAX_MESSAGE_LENGTH} characters allowed.`);
+    }
+
     const now = Date.now();
 
     // Get conversation to get companyId
@@ -191,6 +197,12 @@ export const sendCustomerMessage = mutation({
     experienceId: v.string(), // Passed from route params
   },
   handler: async (ctx, args) => {
+    // Validate message length to prevent token abuse
+    const MAX_MESSAGE_LENGTH = 10000;
+    if (args.content.length > MAX_MESSAGE_LENGTH) {
+      throw new Error(`Message too long. Maximum ${MAX_MESSAGE_LENGTH} characters allowed.`);
+    }
+
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) {
       throw new Error("Conversation not found");
@@ -325,6 +337,12 @@ export const sendAgentMessage = mutation({
     attachmentType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Validate message length to prevent token abuse
+    const MAX_MESSAGE_LENGTH = 10000;
+    if (args.content.length > MAX_MESSAGE_LENGTH) {
+      throw new Error(`Message too long. Maximum ${MAX_MESSAGE_LENGTH} characters allowed.`);
+    }
+
     // Acquire lock to prevent race conditions when multiple agents join simultaneously
     let lockId = null;
     try {

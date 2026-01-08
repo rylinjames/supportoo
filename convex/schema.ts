@@ -377,28 +377,6 @@ export default defineSchema({
     .index("by_active", ["isActive"]),
 
   // ============================================================================
-  // USAGE RECORDS - AI response usage tracking
-  // ============================================================================
-  usageRecords: defineTable({
-    // Relationships
-    companyId: v.id("companies"),
-
-    // Usage tracking
-    period: v.string(), // "2024-01" format
-    aiResponses: v.number(), // Total AI messages sent this month
-
-    // Usage breakdown by time
-    dailyUsage: v.object({}), // { "2024-01-15": 25 }
-    hourlyUsage: v.object({}), // { "2024-01-15-14": 3 }
-
-    // Metadata
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_company_period", ["companyId", "period"])
-    .index("by_period", ["period"]),
-
-  // ============================================================================
   // FILES - Chat attachments (images)
   // ============================================================================
   files: defineTable({
@@ -669,4 +647,66 @@ export default defineSchema({
     .index("by_company_type", ["companyId", "productType"])
     .index("by_sync_status", ["syncStatus"])
     .index("by_last_synced", ["lastSyncedAt"]),
+
+  // ============================================================================
+  // PLANS - Whop pricing plans for products (contains actual pricing)
+  // ============================================================================
+  whopPlans: defineTable({
+    // Relationships
+    companyId: v.id("companies"),
+    productId: v.optional(v.id("products")), // Link to our products table
+
+    // Whop identifiers
+    whopPlanId: v.string(), // Whop's plan ID
+    whopProductId: v.string(), // Whop's product ID this plan belongs to
+    whopCompanyId: v.string(), // Whop company that owns this plan
+
+    // Plan details
+    title: v.string(),
+    description: v.optional(v.string()),
+
+    // Pricing (in cents)
+    initialPrice: v.optional(v.number()), // First payment amount
+    renewalPrice: v.optional(v.number()), // Recurring payment amount
+    currency: v.string(), // Currency code (usd, eur, etc.)
+
+    // Billing
+    billingPeriod: v.optional(v.number()), // Renewal interval in days (null for one-time)
+    planType: v.union(v.literal("renewal"), v.literal("one_time")),
+    trialPeriodDays: v.optional(v.number()),
+    expirationDays: v.optional(v.number()), // For expiring plans
+
+    // Status
+    visibility: v.string(), // "visible", "hidden", "archived", "quick_link"
+    isVisible: v.boolean(), // Computed from visibility
+
+    // Inventory
+    stock: v.optional(v.number()),
+    unlimitedStock: v.optional(v.boolean()),
+    memberCount: v.optional(v.number()),
+
+    // URLs
+    purchaseUrl: v.optional(v.string()),
+
+    // Sync tracking
+    lastSyncedAt: v.number(),
+    syncStatus: v.union(
+      v.literal("synced"),
+      v.literal("error"),
+      v.literal("outdated")
+    ),
+
+    // Raw Whop data for debugging
+    rawWhopData: v.optional(v.any()),
+
+    // Metadata
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_company", ["companyId"])
+    .index("by_product", ["productId"])
+    .index("by_whop_plan", ["whopPlanId"])
+    .index("by_whop_product", ["whopProductId"])
+    .index("by_company_whop_plan", ["companyId", "whopPlanId"])
+    .index("by_company_visible", ["companyId", "isVisible"]),
 });

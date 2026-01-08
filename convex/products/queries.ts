@@ -8,24 +8,34 @@ import { v } from "convex/values";
 import { query } from "../_generated/server";
 
 /**
- * Get all products for a company
+ * Get all products for a company with optional visibility filters
+ * By default, shows only visible and active products
  */
 export const getCompanyProducts = query({
   args: {
     companyId: v.id("companies"),
+    includeHidden: v.optional(v.boolean()),
+    includeInactive: v.optional(v.boolean()),
   },
-  handler: async (ctx, { companyId }) => {
-    const products = await ctx.db
+  handler: async (ctx, { companyId, includeHidden = false, includeInactive = false }) => {
+    let products = await ctx.db
       .query("products")
       .withIndex("by_company", (q) => q.eq("companyId", companyId))
       .collect();
+
+    if (!includeHidden) {
+      products = products.filter(p => p.isVisible === true);
+    }
+    if (!includeInactive) {
+      products = products.filter(p => p.isActive === true);
+    }
 
     return products.sort((a, b) => b.updatedAt - a.updatedAt);
   },
 });
 
 /**
- * Get active products for a company (for AI context)
+ * Get active products for a company (legacy - use getVisibleActiveProducts for AI context)
  */
 export const getActiveProducts = query({
   args: {
@@ -34,12 +44,35 @@ export const getActiveProducts = query({
   handler: async (ctx, { companyId }) => {
     const products = await ctx.db
       .query("products")
-      .withIndex("by_company_active", (q) => 
+      .withIndex("by_company_active", (q) =>
         q.eq("companyId", companyId).eq("isActive", true)
       )
       .collect();
 
     return products.sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+});
+
+/**
+ * Get visible and active products for a company (for AI context)
+ * Only returns products that are both visible AND active
+ */
+export const getVisibleActiveProducts = query({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_company_active", (q) =>
+        q.eq("companyId", companyId).eq("isActive", true)
+      )
+      .collect();
+
+    // Filter for visible products (no compound index, so filter in-memory)
+    return products
+      .filter(p => p.isVisible === true)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
   },
 });
 

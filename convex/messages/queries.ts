@@ -74,6 +74,19 @@ export const getLatestMessage = query({
 });
 
 // ============================================================================
+// GET MESSAGE BY ID
+// ============================================================================
+
+export const getMessageById = query({
+  args: {
+    messageId: v.id("messages"),
+  },
+  handler: async (ctx, { messageId }) => {
+    return await ctx.db.get(messageId);
+  },
+});
+
+// ============================================================================
 // GET UNREAD COUNT FOR AGENTS
 // ============================================================================
 

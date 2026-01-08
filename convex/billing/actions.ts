@@ -96,9 +96,17 @@ export const createCheckoutSession = action({
     }
 
     // 5. Create checkout session with metadata
+    const apiKey = process.env.WHOP_API_KEY;
+    const appId = process.env.NEXT_PUBLIC_WHOP_APP_ID;
+    if (!apiKey) {
+      throw new Error("Missing WHOP_API_KEY environment variable");
+    }
+    if (!appId) {
+      throw new Error("Missing NEXT_PUBLIC_WHOP_APP_ID environment variable");
+    }
     const whopApi = WhopServerSdk({
-      appApiKey: process.env.WHOP_API_KEY!,
-      appId: process.env.NEXT_PUBLIC_WHOP_APP_ID!,
+      appApiKey: apiKey,
+      appId: appId,
       apiOrigin: "https://api.whop.com",
     });
     const traceId = `checkout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

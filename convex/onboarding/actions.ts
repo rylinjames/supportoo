@@ -14,7 +14,10 @@ import { api } from "../_generated/api";
 /**
  * Get company info from Whop experience
  * This is the key to multi-tenancy - we get the ACTUAL company from the experience
- * Uses multiple methods to try to get company info, including user token for better access
+ *
+ * IMPORTANT: We use /v5/app/experiences FIRST because it's the authoritative source
+ * for experience→company mapping. Other methods (like /v5/me/companies) can return
+ * the wrong company if a user is admin of multiple companies.
  */
 async function getCompanyFromExperience(
   experienceId: string,
@@ -28,109 +31,45 @@ async function getCompanyFromExperience(
     throw new Error("WHOP_API_KEY environment variable is required");
   }
 
-  // Method 0: If we have a user token, try to get company from user's context
-  if (userToken) {
-    // Method 0a: Try to get user's authorized companies (best for admin/team members)
-    try {
-      console.log(`[getCompanyFromExperience] Trying /v5/me/companies for experience ${experienceId}...`);
+  // METHOD 1 (AUTHORITATIVE): Use /v5/app/experiences to get the correct company
+  // This endpoint returns ALL experiences for our app with their company_id
+  // This is the ONLY reliable way to determine which company owns an experience
+  try {
+    console.log(`[getCompanyFromExperience] Trying /v5/app/experiences for ${experienceId}...`);
+    const appExperiencesResponse = await fetch(`https://api.whop.com/api/v5/app/experiences`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json',
+      }
+    });
 
-      const companiesResponse = await fetch(`https://api.whop.com/api/v5/me/companies`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Accept': 'application/json',
-        }
-      });
+    if (appExperiencesResponse.ok) {
+      const appExperiencesData = await appExperiencesResponse.json();
+      const experiences = appExperiencesData.data || [];
 
-      if (companiesResponse.ok) {
-        const companiesData = await companiesResponse.json();
-        console.log(`[getCompanyFromExperience] User companies response:`, JSON.stringify(companiesData, null, 2));
+      // Find the experience that matches our experienceId
+      const matchingExperience = experiences.find((exp: any) => exp.id === experienceId);
 
-        const companies = companiesData.data || companiesData;
-        if (Array.isArray(companies) && companies.length > 0) {
-          // For team members/admins, this returns their authorized companies
-          const company = companies[0];
-          const companyId = company.id || company.company_id;
-          if (companyId) {
-            console.log(`[getCompanyFromExperience] Found company from /v5/me/companies: ${companyId}`);
-            return {
-              whopCompanyId: companyId,
-              companyName: company.title || company.name || "My Company",
-            };
-          }
-        }
+      if (matchingExperience && matchingExperience.company_id) {
+        console.log(`[getCompanyFromExperience] ✅ Found company from /v5/app/experiences: ${matchingExperience.company_id}`);
+        return {
+          whopCompanyId: matchingExperience.company_id,
+          companyName: matchingExperience.name || "My Company",
+        };
       } else {
-        console.log(`[getCompanyFromExperience] /v5/me/companies returned ${companiesResponse.status}`);
+        console.log(`[getCompanyFromExperience] Experience ${experienceId} not found in app experiences list`);
       }
-    } catch (e) {
-      console.log(`[getCompanyFromExperience] /v5/me/companies failed:`, e);
+    } else {
+      console.log(`[getCompanyFromExperience] /v5/app/experiences returned ${appExperiencesResponse.status}`);
     }
-
-    // Method 0b: Try has_access endpoint
-    try {
-      console.log(`[getCompanyFromExperience] Trying user token API for experience ${experienceId}...`);
-
-      // Use the user token to check their access to this experience
-      // The access check might return company context
-      const accessResponse = await fetch(`https://api.whop.com/api/v5/me/has_access?resource_type=experience&resource_id=${experienceId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Accept': 'application/json',
-        }
-      });
-
-      if (accessResponse.ok) {
-        const accessData = await accessResponse.json();
-        console.log(`[getCompanyFromExperience] User access response:`, JSON.stringify(accessData, null, 2));
-
-        // The access response might include company/page info
-        const companyId = accessData.company_id || accessData.page_id || accessData.company?.id;
-        if (companyId) {
-          return {
-            whopCompanyId: companyId,
-            companyName: accessData.company?.title || accessData.company?.name || "My Company",
-          };
-        }
-      }
-
-      // Try getting user's memberships which might reveal company
-      const membershipsResponse = await fetch(`https://api.whop.com/api/v5/me/memberships`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${userToken}`,
-          'Accept': 'application/json',
-        }
-      });
-
-      if (membershipsResponse.ok) {
-        const membershipsData = await membershipsResponse.json();
-        console.log(`[getCompanyFromExperience] User memberships:`, JSON.stringify(membershipsData, null, 2));
-
-        // Look for a membership that gives access to this experience
-        const memberships = membershipsData.data || membershipsData;
-        if (Array.isArray(memberships)) {
-          for (const membership of memberships) {
-            const companyId = membership.company_id || membership.page_id;
-            if (companyId) {
-              // Found a company! Verify this membership is for our experience
-              console.log(`[getCompanyFromExperience] Found company from membership: ${companyId}`);
-              return {
-                whopCompanyId: companyId,
-                companyName: membership.company?.title || membership.product?.name || "My Company",
-              };
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.log(`[getCompanyFromExperience] User token API failed:`, e);
-    }
+  } catch (e) {
+    console.log(`[getCompanyFromExperience] /v5/app/experiences failed:`, e);
   }
 
-  // Method 1: Try v5 API (newer API with better company info)
+  // METHOD 2: Try v5 API for specific experience
   try {
-    console.log(`[getCompanyFromExperience] Trying v5 API for ${experienceId}...`);
+    console.log(`[getCompanyFromExperience] Trying /v5/experiences/${experienceId}...`);
     const v5Response = await fetch(`https://api.whop.com/api/v5/experiences/${experienceId}`, {
       method: 'GET',
       headers: {
@@ -155,9 +94,9 @@ async function getCompanyFromExperience(
     console.log(`[getCompanyFromExperience] v5 API failed:`, e);
   }
 
-  // Method 2: Try the apps/experiences endpoint
+  // METHOD 3: Try the apps/experiences endpoint
   try {
-    console.log(`[getCompanyFromExperience] Trying apps API for ${experienceId}...`);
+    console.log(`[getCompanyFromExperience] Trying /v2/apps/experiences/${experienceId}...`);
     const appsResponse = await fetch(`https://api.whop.com/api/v2/apps/experiences/${experienceId}`, {
       method: 'GET',
       headers: {
@@ -182,9 +121,9 @@ async function getCompanyFromExperience(
     console.log(`[getCompanyFromExperience] Apps API failed:`, e);
   }
 
-  // Method 3: Try v2 API with different query params
+  // METHOD 4: Try v2 API
   try {
-    console.log(`[getCompanyFromExperience] Trying v2 API for ${experienceId}...`);
+    console.log(`[getCompanyFromExperience] Trying /v2/experiences/${experienceId}...`);
     const v2Response = await fetch(`https://api.whop.com/api/v2/experiences/${experienceId}`, {
       method: 'GET',
       headers: {
@@ -197,7 +136,6 @@ async function getCompanyFromExperience(
       const v2Data = await v2Response.json();
       console.log(`[getCompanyFromExperience] v2 API response:`, JSON.stringify(v2Data, null, 2));
 
-      // Even if no company_id, try to find it from other fields
       const companyId = v2Data.company_id || v2Data.company?.id || v2Data.companyId;
       if (companyId) {
         return {
@@ -205,36 +143,41 @@ async function getCompanyFromExperience(
           companyName: v2Data.company?.title || v2Data.company?.name || v2Data.name || "My Company",
         };
       }
-
-      // If we have products or access_passes, we might be able to find company from them
-      if (v2Data.products && v2Data.products.length > 0) {
-        const productId = v2Data.products[0].id || v2Data.products[0];
-        console.log(`[getCompanyFromExperience] Trying to get company from product ${productId}...`);
-
-        const productResponse = await fetch(`https://api.whop.com/api/v2/products/${productId}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Accept': 'application/json',
-          }
-        });
-
-        if (productResponse.ok) {
-          const productData = await productResponse.json();
-          console.log(`[getCompanyFromExperience] Product data:`, JSON.stringify(productData, null, 2));
-
-          const prodCompanyId = productData.company_id || productData.company?.id;
-          if (prodCompanyId) {
-            return {
-              whopCompanyId: prodCompanyId,
-              companyName: productData.company?.title || v2Data.name || "My Company",
-            };
-          }
-        }
-      }
     }
   } catch (e) {
     console.log(`[getCompanyFromExperience] v2 API failed:`, e);
+  }
+
+  // METHOD 5 (LAST RESORT): Try user token methods
+  // NOTE: These are less reliable because they may return the wrong company
+  // if the user is admin of multiple companies
+  if (userToken) {
+    // Try has_access endpoint - this checks access for the SPECIFIC experience
+    try {
+      console.log(`[getCompanyFromExperience] Trying /v5/me/has_access for ${experienceId}...`);
+      const accessResponse = await fetch(`https://api.whop.com/api/v5/me/has_access?resource_type=experience&resource_id=${experienceId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${userToken}`,
+          'Accept': 'application/json',
+        }
+      });
+
+      if (accessResponse.ok) {
+        const accessData = await accessResponse.json();
+        console.log(`[getCompanyFromExperience] User access response:`, JSON.stringify(accessData, null, 2));
+
+        const companyId = accessData.company_id || accessData.page_id || accessData.company?.id;
+        if (companyId) {
+          return {
+            whopCompanyId: companyId,
+            companyName: accessData.company?.title || accessData.company?.name || "My Company",
+          };
+        }
+      }
+    } catch (e) {
+      console.log(`[getCompanyFromExperience] has_access API failed:`, e);
+    }
   }
 
   throw new Error(`Could not determine company for experience ${experienceId}. The Whop API does not expose company info for this experience.`);
@@ -389,27 +332,33 @@ export const onboardUser = action({
               }
             }
           } else {
-            console.log(`[onboardUser] Company by route returned ${companyResponse.status}`);
-            // API lookup failed, but we have the route - use it as a fallback identifier
-            // Generate a temporary whopCompanyId from the route
-            whopCompanyId = `route_${companyRoute}`;
-            companyName = companyRoute.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            console.log(`[onboardUser] Using route as fallback company ID: ${whopCompanyId} (${companyName})`);
+            console.log(`[onboardUser] Company by route returned ${companyResponse.status}, trying user token methods...`);
+            // Route lookup failed - try getCompanyFromExperience which uses userToken
+            // This works because userToken has access to the user's companies even if the app's API key doesn't
+            try {
+              const experienceInfo = await getCompanyFromExperience(experienceId, userToken);
+              whopCompanyId = experienceInfo.whopCompanyId;
+              companyName = experienceInfo.companyName;
+              console.log(`[onboardUser] Got company via user token: ${whopCompanyId} (${companyName})`);
 
-            // Check if company already exists in our DB with this route-based ID
-            company = await ctx.runQuery(
-              api.companies.queries.getCompanyByWhopId,
-              { whopCompanyId }
-            );
+              // Check if company already exists in our DB
+              company = await ctx.runQuery(
+                api.companies.queries.getCompanyByWhopId,
+                { whopCompanyId }
+              );
 
-            if (company) {
-              companyName = company.name;
-              if (!company.whopExperienceId) {
-                await ctx.runMutation(api.companies.mutations.updateExperienceId, {
-                  companyId: company._id,
-                  experienceId,
-                });
+              if (company) {
+                companyName = company.name;
+                if (!company.whopExperienceId) {
+                  await ctx.runMutation(api.companies.mutations.updateExperienceId, {
+                    companyId: company._id,
+                    experienceId,
+                  });
+                }
               }
+            } catch (userTokenError) {
+              console.error(`[onboardUser] User token methods also failed:`, userTokenError);
+              // Don't create fake IDs - let it fall through to the error handler below
             }
           }
         } catch (routeError) {

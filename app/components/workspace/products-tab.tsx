@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RefreshCw, Package, DollarSign, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { RefreshCw, Package, DollarSign, Clock, CheckCircle, AlertCircle, EyeOff } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
@@ -20,16 +22,49 @@ interface ProductsTabProps {
 export function ProductsTab({ companyId }: ProductsTabProps) {
   const { userData, userToken } = useUser();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingPlans, setIsSyncingPlans] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<any>(null);
+  const [showHiddenProducts, setShowHiddenProducts] = useState(false);
 
-  // Query products
+  // Query products with filter based on toggle state
   const products = useQuery(
     api.products.queries.getCompanyProducts,
-    { companyId }
+    {
+      companyId,
+      includeHidden: showHiddenProducts,
+      includeInactive: showHiddenProducts,
+    }
   );
+
+  // Also query all products to get counts for hidden/inactive
+  const allProducts = useQuery(
+    api.products.queries.getCompanyProducts,
+    { companyId, includeHidden: true, includeInactive: true }
+  );
+
+  // Query plans for all products
+  const plans = useQuery(
+    api.whopPlans.queries.getCompanyPlans,
+    { companyId, includeHidden: showHiddenProducts }
+  );
+
+  // Group plans by whopProductId for easy lookup
+  const plansByProduct = plans?.reduce((acc: Record<string, any[]>, plan: any) => {
+    if (!acc[plan.whopProductId]) {
+      acc[plan.whopProductId] = [];
+    }
+    acc[plan.whopProductId].push(plan);
+    return acc;
+  }, {} as Record<string, any[]>) || {};
+
+  // Calculate hidden product counts
+  const hiddenCount = allProducts
+    ? allProducts.filter(p => !p.isVisible || !p.isActive).length
+    : 0;
 
   // Actions
   const syncProducts = useAction(api.products.actions.syncProducts);
+  const syncPlans = useAction(api.whopPlans.actions.syncPlans);
   const testConnection = useAction(api.products.actions.testWhopConnection);
 
   const handleSyncProducts = async () => {
@@ -68,6 +103,23 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
           `Successfully synced ${result.syncedCount} products` +
           (result.deletedCount > 0 ? ` (removed ${result.deletedCount} outdated)` : "")
         );
+
+        // Also sync plans after products
+        console.log("🔄 Now syncing pricing plans...");
+        setIsSyncingPlans(true);
+        try {
+          const planResult = await syncPlans({ companyId });
+          if (planResult.success) {
+            toast.success(`Synced ${planResult.syncedCount} pricing plans`);
+          } else {
+            toast.error("Failed to sync plans: " + (planResult.errors?.[0] || "Unknown error"));
+          }
+        } catch (planError) {
+          console.error("Plan sync failed:", planError);
+          toast.error(`Plan sync failed: ${planError instanceof Error ? planError.message : "Unknown error"}`);
+        } finally {
+          setIsSyncingPlans(false);
+        }
       } else {
         toast.error("Failed to sync products: " + (result.errors?.[0] || "Unknown error"));
       }
@@ -161,13 +213,13 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3">
-              <Button 
+              <Button
                 onClick={handleSyncProducts}
-                disabled={isSyncing}
+                disabled={isSyncing || isSyncingPlans}
                 className="flex items-center gap-2"
               >
-                <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? "Syncing..." : "Sync Products"}
+                <RefreshCw className={`h-4 w-4 ${isSyncing || isSyncingPlans ? 'animate-spin' : ''}`} />
+                {isSyncing ? "Syncing Products..." : isSyncingPlans ? "Syncing Plans..." : "Sync Products & Plans"}
               </Button>
               
               <Button 
@@ -200,11 +252,31 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
       {/* Products List */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-h4 text-foreground">Current Products</h3>
-          <Badge variant="secondary" className="flex items-center gap-1">
-            <Package className="h-3 w-3" />
-            {products?.length || 0} products
-          </Badge>
+          <div className="flex items-center gap-4">
+            <h3 className="text-h4 text-foreground">Current Products</h3>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-hidden"
+                checked={showHiddenProducts}
+                onCheckedChange={setShowHiddenProducts}
+              />
+              <Label htmlFor="show-hidden" className="text-sm text-muted-foreground cursor-pointer">
+                Show hidden/archived
+              </Label>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <Package className="h-3 w-3" />
+              {products?.length || 0} visible
+            </Badge>
+            {hiddenCount > 0 && (
+              <Badge variant="outline" className="flex items-center gap-1 text-muted-foreground">
+                <EyeOff className="h-3 w-3" />
+                {hiddenCount} hidden
+              </Badge>
+            )}
+          </div>
         </div>
 
         {products === undefined ? (
@@ -260,26 +332,57 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                         <Badge className={getSyncStatusColor(product.syncStatus)}>
                           {product.syncStatus}
                         </Badge>
+                        {!product.isVisible && (
+                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                            Hidden
+                          </Badge>
+                        )}
                         {!product.isActive && (
                           <Badge variant="secondary">Inactive</Badge>
                         )}
                       </div>
                     </div>
 
-                    {/* Details */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      {product.price && (
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="h-4 w-4 text-muted-foreground" />
-                          <span>{formatPrice(product.price, product.currency)}</span>
-                          {product.accessType === "subscription" && product.billingPeriod && (
-                            <span className="text-muted-foreground">
-                              /{product.billingPeriod.replace('ly', '')}
-                            </span>
-                          )}
+                    {/* Pricing Plans */}
+                    {plansByProduct[product.whopProductId]?.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-sm font-medium text-foreground flex items-center gap-1">
+                          <DollarSign className="h-4 w-4" />
+                          Pricing Options:
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {plansByProduct[product.whopProductId].map((plan: any) => (
+                            <Badge
+                              key={plan._id}
+                              variant="outline"
+                              className="text-sm py-1 px-2"
+                            >
+                              {plan.title}:{" "}
+                              {plan.initialPrice
+                                ? formatPrice(plan.initialPrice, plan.currency)
+                                : "Free"}
+                              {plan.planType === "renewal" && plan.billingPeriod && (
+                                <span className="text-muted-foreground ml-1">
+                                  /{plan.billingPeriod === 30 || plan.billingPeriod === 31
+                                    ? "mo"
+                                    : plan.billingPeriod === 365 || plan.billingPeriod === 366
+                                    ? "yr"
+                                    : plan.billingPeriod === 7
+                                    ? "wk"
+                                    : `${plan.billingPeriod}d`}
+                                </span>
+                              )}
+                              {plan.planType === "one_time" && (
+                                <span className="text-muted-foreground ml-1">(one-time)</span>
+                              )}
+                            </Badge>
+                          ))}
                         </div>
-                      )}
-                      
+                      </div>
+                    )}
+
+                    {/* Details */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                       <div className="flex items-center gap-2">
                         <Badge className={getProductTypeColor(product.productType)} variant="secondary">
                           {product.productType.replace('_', ' ')}

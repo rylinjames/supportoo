@@ -593,6 +593,48 @@ export const deleteCompanyByWhopId = mutation({
 });
 
 /**
+ * Fix invalid whopCompanyId (migration utility)
+ *
+ * Updates a company's whopCompanyId from an invalid "route_xxx" format
+ * to the correct "biz_xxx" format.
+ */
+export const fixWhopCompanyId = mutation({
+  args: {
+    oldWhopCompanyId: v.string(), // The invalid ID (e.g., "route_test-whop")
+    newWhopCompanyId: v.string(), // The correct ID (e.g., "biz_xxxxx")
+  },
+  handler: async (ctx, { oldWhopCompanyId, newWhopCompanyId }) => {
+    // Find company by old whopCompanyId
+    const company = await ctx.db
+      .query("companies")
+      .withIndex("by_whop_company_id", (q) => q.eq("whopCompanyId", oldWhopCompanyId))
+      .first();
+
+    if (!company) {
+      console.log(`No company found with whopCompanyId: ${oldWhopCompanyId}`);
+      return { success: false, error: "Company not found" };
+    }
+
+    console.log(`Found company to fix: ${company._id} (${company.name})`);
+    console.log(`Updating whopCompanyId from "${oldWhopCompanyId}" to "${newWhopCompanyId}"`);
+
+    // Update the company's whopCompanyId
+    await ctx.db.patch(company._id, {
+      whopCompanyId: newWhopCompanyId,
+      updatedAt: Date.now(),
+    });
+
+    return {
+      success: true,
+      companyId: company._id,
+      companyName: company.name,
+      oldWhopCompanyId,
+      newWhopCompanyId,
+    };
+  },
+});
+
+/**
  * Update company plan (from Billing tab)
  *
  * TODO: Revisit this when we discuss Whop billing integration.

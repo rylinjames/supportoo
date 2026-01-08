@@ -69,6 +69,9 @@ import type * as users_team_mutations from "../users/team_mutations.js";
 import type * as users_team_queries from "../users/team_queries.js";
 import type * as utils_transactions from "../utils/transactions.js";
 import type * as webhooks_whop from "../webhooks/whop.js";
+import type * as whopPlans_actions from "../whopPlans/actions.js";
+import type * as whopPlans_mutations from "../whopPlans/mutations.js";
+import type * as whopPlans_queries from "../whopPlans/queries.js";
 import type * as workspace_actions from "../workspace/actions.js";
 
 import type {
@@ -147,6 +150,9 @@ declare const fullApi: ApiFromModules<{
   "users/team_queries": typeof users_team_queries;
   "utils/transactions": typeof utils_transactions;
   "webhooks/whop": typeof webhooks_whop;
+  "whopPlans/actions": typeof whopPlans_actions;
+  "whopPlans/mutations": typeof whopPlans_mutations;
+  "whopPlans/queries": typeof whopPlans_queries;
   "workspace/actions": typeof workspace_actions;
 }>;
 declare const fullApiWithMounts: typeof fullApi;

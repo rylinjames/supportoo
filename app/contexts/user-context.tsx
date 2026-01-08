@@ -1,6 +1,9 @@
 "use client";
 
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, ReactNode, useCallback } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 
 interface UserCompany {
   companyId: string;
@@ -32,7 +35,7 @@ interface UserContextType {
   userToken: string | undefined;
   isLoading: boolean;
   error: string | undefined;
-  switchCompany: (companyId: string) => void;
+  switchCompany: (companyId: string) => Promise<void>;
   getCurrentRole: () => "admin" | "support" | "customer" | null;
 }
 
@@ -53,12 +56,31 @@ export function UserProvider({
   isLoading,
   error,
 }: UserProviderProps) {
-  const switchCompany = (companyId: string) => {
-    // TODO: Implement company switching logic
-    // This will need to call a backend mutation to update lastActiveInCompany
-    // and potentially trigger a re-fetch of user data
-    console.log("Switching to company:", companyId);
-  };
+  const switchActiveCompanyMutation = useMutation(
+    api.users.mutations.switchActiveCompany
+  );
+
+  const switchCompany = useCallback(
+    async (companyId: string) => {
+      if (!userData?.user._id) {
+        console.error("Cannot switch company: No user data");
+        return;
+      }
+
+      try {
+        await switchActiveCompanyMutation({
+          userId: userData.user._id as Id<"users">,
+          companyId: companyId as Id<"companies">,
+        });
+
+        // Reload the page to refresh the user context with new company
+        window.location.reload();
+      } catch (error) {
+        console.error("Failed to switch company:", error);
+      }
+    },
+    [userData?.user._id, switchActiveCompanyMutation]
+  );
 
   const getCurrentRole = () => {
     if (!userData) return null;

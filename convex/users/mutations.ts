@@ -196,6 +196,58 @@ export const removeUserFromCompany = mutation({
 });
 
 /**
+ * Switch active company
+ *
+ * Updates the user's last active company timestamp.
+ * The frontend will use this to determine the current company context.
+ */
+export const switchActiveCompany = mutation({
+  args: {
+    userId: v.id("users"),
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { userId, companyId }) => {
+    const now = Date.now();
+
+    // Verify user exists
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Verify user belongs to this company
+    const userCompany = await ctx.db
+      .query("user_companies")
+      .withIndex("by_user_company", (q) =>
+        q.eq("userId", userId).eq("companyId", companyId)
+      )
+      .first();
+
+    if (!userCompany) {
+      throw new Error("User is not a member of this company");
+    }
+
+    // Update lastActiveInCompany for the target company
+    await ctx.db.patch(userCompany._id, {
+      lastActiveInCompany: now,
+      updatedAt: now,
+    });
+
+    // Also update user's lastActiveAt
+    await ctx.db.patch(userId, {
+      lastActiveAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      success: true,
+      companyId,
+      companyName: userCompany.companyId, // Will be resolved on frontend
+    };
+  },
+});
+
+/**
  * Get or create test customer
  *
  * Creates a test customer for testing the support chat from customer perspective

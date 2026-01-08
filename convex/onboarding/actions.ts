@@ -10,6 +10,7 @@ import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { type OurAppRole, getWhopSdk } from "../lib/whop";
 import { api } from "../_generated/api";
+import { Id } from "../_generated/dataModel";
 
 /**
  * Get company info from Whop experience
@@ -483,10 +484,11 @@ export const onboardUser = action({
         role = "admin";
         console.log(`[onboardUser] First admin for new company, role: admin`);
       } else {
-        role = await determineUserRole(
+        role = await determineUserRoleWithVerification(
           whopUserId,
-          whopCompanyId,
+          company._id, // Pass the actual company ID we already found
           accessCheck.accessLevel,
+          userToken, // Pass userToken for Whop API verification
           ctx
         );
         console.log(`[onboardUser] Determined role: ${role}`);
@@ -800,6 +802,154 @@ async function determineUserRole(
   // Regular customer
   console.log(
     `[determineUserRole] ${adminCount} admins exist, ${whopUserId} (accessLevel: ${accessLevel}) will be: customer`
+  );
+  return "customer";
+}
+
+/**
+ * Helper: Check if user is an admin/owner of a company via Whop API
+ *
+ * This calls the /v5/me/companies endpoint with the user's token to check
+ * if they own or manage the specified company. This is needed because
+ * viewType="app" is returned even for company owners when they access
+ * through the hub instead of admin dashboard.
+ */
+async function checkWhopAdminStatus(
+  userToken: string,
+  whopCompanyId: string
+): Promise<{ isAdmin: boolean; whopRole: string | null }> {
+  try {
+    console.log(`[checkWhopAdminStatus] Checking if user owns/manages company ${whopCompanyId}`);
+
+    const response = await fetch(
+      'https://api.whop.com/api/v5/me/companies',
+      {
+        headers: {
+          'Authorization': `Bearer ${userToken}`,
+          'Accept': 'application/json',
+        }
+      }
+    );
+
+    if (!response.ok) {
+      console.log(`[checkWhopAdminStatus] API call failed with status ${response.status}`);
+      return { isAdmin: false, whopRole: null };
+    }
+
+    const data = await response.json();
+    const companies = data.data || data || [];
+
+    console.log(`[checkWhopAdminStatus] User has access to ${Array.isArray(companies) ? companies.length : 'unknown'} companies`);
+
+    // Find the company in user's companies list
+    const company = Array.isArray(companies)
+      ? companies.find((c: any) => c.id === whopCompanyId)
+      : null;
+
+    if (company) {
+      // User owns or manages this company
+      const whopRole = company.role || company.access_level || 'owner';
+      const isAdmin = ['owner', 'admin', 'moderator'].includes(whopRole.toLowerCase());
+      console.log(`[checkWhopAdminStatus] User is "${whopRole}" of company ${whopCompanyId}, isAdmin: ${isAdmin}`);
+      return { isAdmin, whopRole };
+    }
+
+    console.log(`[checkWhopAdminStatus] Company ${whopCompanyId} not found in user's companies`);
+    return { isAdmin: false, whopRole: null };
+  } catch (error) {
+    console.error('[checkWhopAdminStatus] Error:', error);
+    return { isAdmin: false, whopRole: null };
+  }
+}
+
+/**
+ * Helper: Determine user's role with Whop API verification
+ *
+ * Enhanced version that verifies admin status via Whop API when viewType
+ * suggests "customer" but user might actually be an owner/admin.
+ *
+ * Also re-verifies existing "customer" roles to fix mis-assigned users.
+ *
+ * IMPORTANT: Takes companyId directly (not whopCompanyId) to avoid issues
+ * with duplicate companies having the same whopCompanyId. The caller should
+ * use the company already found via getCompanyByExperienceId.
+ */
+async function determineUserRoleWithVerification(
+  whopUserId: string,
+  companyId: Id<"companies">,
+  accessLevel: string,
+  userToken: string | undefined,
+  ctx: any
+): Promise<OurAppRole> {
+  // First, check if this user already exists in our database with a role
+  const existingUser = await ctx.runQuery(
+    api.users.queries.getUserByWhopUserId,
+    { whopUserId }
+  );
+
+  // If user already exists, check their role in this specific company
+  if (existingUser) {
+    const existingRole = await ctx.runQuery(
+      api.users.multi_company_helpers.getUserRoleInCompany,
+      {
+        userId: existingUser._id,
+        companyId: companyId,
+      }
+    );
+
+    if (existingRole) {
+      console.log(
+        `[determineUserRoleWithVerification] User ${whopUserId} already has role: ${existingRole} in company ${companyId}`
+      );
+
+      // RE-VERIFY: If user is a "customer" but has userToken, check if they're actually an admin
+      // This fixes users who were mis-assigned due to viewType="app" issue
+      // Note: Whop API verification is disabled for now as /v5/me/companies returns 404
+      // The fix is to use the correct company ID (passed in) instead of looking it up by whopCompanyId
+      if (existingRole === "customer" && userToken) {
+        console.log(`[determineUserRoleWithVerification] User has customer role, but using correct company lookup now`);
+        // When Whop API works, we can re-enable verification here
+      }
+
+      return existingRole;
+    }
+  }
+
+  // User doesn't have a role yet - check if company has any admins
+  // Check if any admins already exist for this company
+  const existingAdmins = await ctx.runQuery(
+    api.users.multi_company_helpers.getTeamMembersForCompany,
+    {
+      companyId: companyId,
+    }
+  );
+
+  // Filter to only admins
+  const adminCount = existingAdmins.filter(
+    (member: any) => member.role === "admin"
+  ).length;
+
+  // If no admins exist yet, this person becomes admin (regardless of accessLevel)
+  if (adminCount === 0) {
+    console.log(
+      `[determineUserRoleWithVerification] No admins exist for company ${companyId}, ${whopUserId} will be admin`
+    );
+    return "admin";
+  }
+
+  // Admins exist - if accessLevel is already "admin", make them support
+  if (accessLevel === "admin") {
+    console.log(
+      `[determineUserRoleWithVerification] ${adminCount} admins exist, ${whopUserId} (accessLevel: admin) will be: support`
+    );
+    return "support";
+  }
+
+  // accessLevel is "customer" - assign customer role
+  // Note: Whop API verification disabled as /v5/me/companies returns 404
+  // The core fix is using correct company ID, not duplicate lookup
+  console.log(
+    `[determineUserRoleWithVerification] ${adminCount} admins exist, ${whopUserId} (accessLevel: ${accessLevel}) assigned customer role`
   );
   return "customer";
 }

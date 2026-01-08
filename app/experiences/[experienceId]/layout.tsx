@@ -249,38 +249,40 @@ const InnerLayout = ({ children }: LayoutProps) => {
       >
         <RouteGuard>
           <Toaster />
-          {/* Desktop View */}
-          <div
-            suppressHydrationWarning
-            className="hidden xl:flex h-screen overflow-hidden"
-          >
-            <Sidebar
-              userType="admin"  // TEMPORARILY: Force admin to show all navigation
-              user={currentUser}
-            />
-            <div className="flex-1 overflow-hidden bg-background">
-              {children}
-            </div>
-          </div>
-          {/* Mobile/Tablet View */}
-          <div className="flex xl:hidden flex-col h-screen overflow-hidden">
-            <main className="flex-1 overflow-hidden bg-background">
-              {children}
-            </main>
-            {(() => {
-              const userRole =
-                currentUser?.userCompanies.find(
-                  (uc) => uc.companyId === currentUser.currentCompanyId
-                )?.role || "customer";
-              // TEMPORARILY: Show bottom nav for all users including customers
-              // if (userRole === "customer") {
-              //   return null;
-              // }
-              return (
-                <MobileBottomNav userType="admin" user={currentUser} />
-              );
-            })()}
-          </div>
+          {(() => {
+            // Compute user role once for both Desktop and Mobile views
+            const userRole =
+              currentUser?.userCompanies.find(
+                (uc) => uc.companyId === currentUser.currentCompanyId
+              )?.role || "customer";
+
+            return (
+              <>
+                {/* Desktop View */}
+                <div
+                  suppressHydrationWarning
+                  className="hidden xl:flex h-screen overflow-hidden"
+                >
+                  <Sidebar
+                    userType={userRole}
+                    user={currentUser}
+                  />
+                  <div className="flex-1 overflow-hidden bg-background">
+                    {children}
+                  </div>
+                </div>
+                {/* Mobile/Tablet View */}
+                <div className="flex xl:hidden flex-col h-screen overflow-hidden">
+                  <main className="flex-1 overflow-hidden bg-background">
+                    {children}
+                  </main>
+                  {userRole !== "customer" && (
+                    <MobileBottomNav userType={userRole} user={currentUser} />
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </RouteGuard>
       </UserProvider>
     </WhopPaymentsProvider>

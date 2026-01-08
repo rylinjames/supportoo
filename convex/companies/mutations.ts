@@ -37,6 +37,26 @@ export const createCompany = mutation({
     experienceId: v.optional(v.string()),
   },
   handler: async (ctx, { whopCompanyId, name, experienceId }) => {
+    // IMPORTANT: Check if company already exists with this whopCompanyId
+    // This prevents duplicate companies which cause role lookup bugs
+    const existingCompany = await ctx.db
+      .query("companies")
+      .withIndex("by_whop_company_id", (q) => q.eq("whopCompanyId", whopCompanyId))
+      .first();
+
+    if (existingCompany) {
+      console.log(`[createCompany] Company with whopCompanyId ${whopCompanyId} already exists: ${existingCompany._id}`);
+      // If experienceId is provided and different from existing, update it
+      if (experienceId && existingCompany.whopExperienceId !== experienceId) {
+        await ctx.db.patch(existingCompany._id, {
+          whopExperienceId: experienceId,
+          updatedAt: Date.now(),
+        });
+        console.log(`[createCompany] Updated experienceId to ${experienceId}`);
+      }
+      return existingCompany._id;
+    }
+
     // Get the Free plan ID (default for new companies)
     const freePlan = await ctx.db
       .query("plans")

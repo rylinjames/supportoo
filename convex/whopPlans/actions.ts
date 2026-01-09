@@ -12,6 +12,54 @@ import { api } from "../_generated/api";
 import { getWhopConfig } from "../lib/whop";
 
 /**
+ * Fetch with retry and exponential backoff
+ *
+ * Retries on server errors (5xx) and network failures.
+ * Does NOT retry on client errors (4xx) as those are permanent failures.
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = 3,
+  baseDelayMs: number = 1000
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Don't retry on client errors (4xx) - those are permanent
+      if (response.status >= 400 && response.status < 500) {
+        return response;
+      }
+
+      // Retry on server errors (5xx)
+      if (response.status >= 500) {
+        const errorText = await response.text();
+        throw new Error(`Server error ${response.status}: ${errorText}`);
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < maxRetries - 1) {
+        // Exponential backoff: 1s, 3s, 9s
+        const delay = baseDelayMs * Math.pow(3, attempt);
+        console.log(
+          `[fetchWithRetry] Attempt ${attempt + 1}/${maxRetries} failed: ${lastError.message}. Retrying in ${delay}ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  console.error(`[fetchWithRetry] All ${maxRetries} attempts failed`);
+  throw lastError || new Error("Max retries exceeded");
+}
+
+/**
  * Sync all plans from Whop for a company
  *
  * Plans contain the actual pricing information for products.
@@ -63,7 +111,8 @@ export const syncPlans = action({
 
         console.log(`[syncPlans] Fetching from: ${url}`);
 
-        const response = await fetch(url, {
+        // Use fetchWithRetry for resilience against transient failures
+        const response = await fetchWithRetry(url, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -73,7 +122,7 @@ export const syncPlans = action({
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`[syncPlans] API error: ${errorText}`);
+          console.error(`[syncPlans] API error (${response.status}): ${errorText}`);
 
           if (
             errorText.includes("forbidden") ||
@@ -241,7 +290,7 @@ export const testPlansConnection = action({
       const { apiKey } = getWhopConfig();
 
       // Use v1 /plans endpoint with company_id filter
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `https://api.whop.com/api/v1/plans?company_id=${company.whopCompanyId}&first=10`,
         {
           method: "GET",

@@ -12,6 +12,54 @@ import { api, internal } from "../_generated/api";
 import { getWhopConfig } from "../lib/whop";
 
 /**
+ * Fetch with retry and exponential backoff
+ *
+ * Retries on server errors (5xx) and network failures.
+ * Does NOT retry on client errors (4xx) as those are permanent failures.
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = 3,
+  baseDelayMs: number = 1000
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Don't retry on client errors (4xx) - those are permanent
+      if (response.status >= 400 && response.status < 500) {
+        return response;
+      }
+
+      // Retry on server errors (5xx)
+      if (response.status >= 500) {
+        const errorText = await response.text();
+        throw new Error(`Server error ${response.status}: ${errorText}`);
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < maxRetries - 1) {
+        // Exponential backoff: 1s, 3s, 9s
+        const delay = baseDelayMs * Math.pow(3, attempt);
+        console.log(
+          `[fetchWithRetry] Attempt ${attempt + 1}/${maxRetries} failed: ${lastError.message}. Retrying in ${delay}ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  console.error(`[fetchWithRetry] All ${maxRetries} attempts failed`);
+  throw lastError || new Error("Max retries exceeded");
+}
+
+/**
  * Sync all products from Whop for a company
  *
  * IMPORTANT: The userToken parameter should be passed when syncing products
@@ -79,7 +127,8 @@ export const syncProducts = action({
 
           console.log(`[syncProducts] Fetching from: ${url}`);
 
-          const response: Response = await fetch(url, {
+          // Use fetchWithRetry for resilience against transient failures
+          const response: Response = await fetchWithRetry(url, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${apiKey}`,
@@ -476,7 +525,8 @@ export const testWhopConnection = action({
       while (hasMore && page <= 10) { // Limit to 10 pages for test
         const url = `https://api.whop.com/api/v5/app/products?page=${page}&per=100`;
 
-        const response = await fetch(url, {
+        // Use fetchWithRetry for resilience against transient failures
+        const response = await fetchWithRetry(url, {
           headers: {
             'Authorization': `Bearer ${apiKey}`,
             'Accept': 'application/json',

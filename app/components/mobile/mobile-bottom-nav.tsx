@@ -38,7 +38,7 @@ export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
     },
   ];
 
-  // Admin navigation items - Customer View only in dev mode
+  // Admin navigation items
   const adminNavItems = [
     {
       id: "support",
@@ -52,17 +52,12 @@ export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
       label: "Workspace",
       route: "/workspace",
     },
-    // Only show Customer View in development mode
-    ...(process.env.NODE_ENV === "development"
-      ? [
-          {
-            id: "customer-view",
-            icon: Eye,
-            label: "Customer",
-            route: "/customer-view",
-          },
-        ]
-      : []),
+    {
+      id: "customer-test",
+      icon: Eye,
+      label: "Test",
+      route: "/customer-test",
+    },
     {
       id: "settings",
       icon: SettingsIcon,

@@ -200,10 +200,11 @@ export const generateChatResponse = action({
         });
 
         // Helper function to format price - handles FREE plans correctly
-        const formatPrice = (priceInCents: number | undefined, currency: string) => {
-          if (priceInCents === undefined || priceInCents === null) return null;
-          if (priceInCents === 0) return "Free";
-          const price = (priceInCents / 100).toFixed(2);
+        // Note: Whop API returns prices in DOLLARS, not cents
+        const formatPrice = (priceInDollars: number | undefined, currency: string) => {
+          if (priceInDollars === undefined || priceInDollars === null) return null;
+          if (priceInDollars === 0) return "Free";
+          const price = priceInDollars.toFixed(2);
           return `${currency.toUpperCase()} $${price}`;
         };
 
@@ -246,7 +247,8 @@ ${products.map((product: any) => {
     }
   } else if (product.price && product.currency) {
     // Fallback to product price if no plans (legacy)
-    const price = (product.price / 100).toFixed(2);
+    // Note: Whop API returns prices in DOLLARS, not cents
+    const price = product.price.toFixed(2);
     productInfo += ` - ${product.currency} $${price}`;
 
     if (product.accessType === "subscription" && product.billingPeriod) {

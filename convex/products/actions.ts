@@ -226,6 +226,22 @@ export const syncProducts = action({
 
       console.log(`[syncProducts] Sync complete. Synced: ${syncedProductIds.length}, Deleted: ${deletedCount}, Errors: ${errors.length}`);
 
+      // After syncing products, also sync plans to get accurate pricing
+      // Plans contain the actual pricing info (products API doesn't return prices)
+      console.log(`[syncProducts] Now syncing plans for pricing data...`);
+      try {
+        const plansSyncResult = await ctx.runAction(
+          api.whopPlans.actions.syncPlans,
+          { companyId }
+        );
+        console.log(
+          `[syncProducts] Plans sync complete: ${plansSyncResult.syncedCount} plans synced`
+        );
+      } catch (plansError) {
+        console.error(`[syncProducts] Plans sync failed:`, plansError);
+        errors.push(`Plans sync failed: ${plansError instanceof Error ? plansError.message : String(plansError)}`);
+      }
+
       return {
         success: true,
         syncedCount: syncedProductIds.length,

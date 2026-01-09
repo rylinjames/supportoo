@@ -54,8 +54,9 @@ export const syncPlans = action({
       let hasMore = true;
 
       while (hasMore) {
-        // Use v5 /app/plans endpoint
-        let url = `https://api.whop.com/api/v5/app/plans?per=100`;
+        // Use v1 /plans endpoint with company_id filter
+        // The v5/app/plans endpoint doesn't exist - use v1/plans instead
+        let url = `https://api.whop.com/api/v1/plans?company_id=${company.whopCompanyId}&first=100`;
         if (cursor) {
           url += `&after=${cursor}`;
         }
@@ -93,24 +94,14 @@ export const syncPlans = action({
         }
 
         const data = await response.json();
+        // v1 API returns plans directly in data array, already filtered by company_id
         const fetchedPlans = data.data || [];
 
-        // Filter plans for THIS company only
-        // Plans have a nested product object with company info
-        const companyPlans = fetchedPlans.filter((plan: any) => {
-          const planCompanyId =
-            plan.company?.id ||
-            plan.company_id ||
-            plan.product?.company_id ||
-            plan.product?.company?.id;
-          return planCompanyId === company.whopCompanyId;
-        });
-
-        if (companyPlans.length > 0) {
-          allPlans.push(...companyPlans);
+        if (fetchedPlans.length > 0) {
+          allPlans.push(...fetchedPlans);
         }
 
-        // Check for pagination
+        // Check for pagination (v1 API uses page_info with edges/nodes format)
         if (data.page_info?.has_next_page && data.page_info?.end_cursor) {
           cursor = data.page_info.end_cursor;
         } else {
@@ -149,6 +140,7 @@ export const syncPlans = action({
           const productId = productMap.get(whopProductId);
 
           // Map plan data to our schema
+          // Note: Convert null values to undefined for Convex compatibility
           const planData = {
             companyId,
             productId: productId as any, // Can be undefined
@@ -156,11 +148,12 @@ export const syncPlans = action({
             whopProductId,
             whopCompanyId: company.whopCompanyId,
             title: whopPlan.title || whopPlan.name || "Untitled Plan",
-            description: whopPlan.description,
-            initialPrice: whopPlan.initial_price
+            description: whopPlan.description || undefined,
+            // Handle prices - keep 0 as 0 (for Free plans), only undefined if not present
+            initialPrice: whopPlan.initial_price !== undefined && whopPlan.initial_price !== null
               ? Math.round(whopPlan.initial_price)
               : undefined,
-            renewalPrice: whopPlan.renewal_price
+            renewalPrice: whopPlan.renewal_price !== undefined && whopPlan.renewal_price !== null
               ? Math.round(whopPlan.renewal_price)
               : undefined,
             currency: (whopPlan.currency || "usd").toLowerCase(),
@@ -168,13 +161,13 @@ export const syncPlans = action({
             planType: (whopPlan.plan_type === "one_time"
               ? "one_time"
               : "renewal") as "renewal" | "one_time",
-            trialPeriodDays: whopPlan.trial_period_days,
-            expirationDays: whopPlan.expiration_days,
+            trialPeriodDays: whopPlan.trial_period_days || undefined,
+            expirationDays: whopPlan.expiration_days || undefined,
             visibility: whopPlan.visibility || "visible",
-            stock: whopPlan.stock,
-            unlimitedStock: whopPlan.unlimited_stock,
-            memberCount: whopPlan.member_count,
-            purchaseUrl: whopPlan.purchase_url,
+            stock: whopPlan.stock ?? undefined,
+            unlimitedStock: whopPlan.unlimited_stock ?? undefined,
+            memberCount: whopPlan.member_count ?? undefined,
+            purchaseUrl: whopPlan.purchase_url || undefined,
             rawWhopData: whopPlan,
           };
 
@@ -247,8 +240,9 @@ export const testPlansConnection = action({
 
       const { apiKey } = getWhopConfig();
 
+      // Use v1 /plans endpoint with company_id filter
       const response = await fetch(
-        "https://api.whop.com/api/v5/app/plans?per=10",
+        `https://api.whop.com/api/v1/plans?company_id=${company.whopCompanyId}&first=10`,
         {
           method: "GET",
           headers: {
@@ -262,23 +256,14 @@ export const testPlansConnection = action({
         const errorText = await response.text();
         return {
           success: false,
-          message: `API error: ${errorText}`,
+          message: `API error (${response.status}): ${errorText}`,
           samplePlans: [],
         };
       }
 
       const data = await response.json();
-      const allPlans = data.data || [];
-
-      // Filter for this company's plans
-      const companyPlans = allPlans.filter((plan: any) => {
-        const planCompanyId =
-          plan.company?.id ||
-          plan.company_id ||
-          plan.product?.company_id ||
-          plan.product?.company?.id;
-        return planCompanyId === company.whopCompanyId;
-      });
+      // v1 API already filters by company_id
+      const companyPlans = data.data || [];
 
       return {
         success: true,

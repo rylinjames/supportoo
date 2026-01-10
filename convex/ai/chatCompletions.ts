@@ -632,21 +632,54 @@ ${company.aiSystemPrompt || ""}`;
 
       const handoffTriggers = company.aiHandoffTriggers || [];
       const lowerResponse = response.toLowerCase();
-      
+      const lowerCustomerMessage = triggeringMessage.content.toLowerCase();
+
+      // Map trigger IDs to actual phrases to detect
+      const triggerPhraseMap: Record<string, string[]> = {
+        "customer_requests_human": [
+          "speak to a human", "talk to a human", "real person", "human agent",
+          "talk to someone", "speak to someone", "real agent", "live agent",
+          "customer service", "support agent", "talk to support", "speak to support",
+          "need a human", "want a human", "get me a human", "transfer me"
+        ],
+        "billing_questions": [
+          "billing", "payment", "refund", "charge", "invoice", "subscription",
+          "cancel my", "charged me", "money back", "pricing", "cost", "price",
+          "credit card", "debit card", "transaction"
+        ],
+        "negative_sentiment": [
+          "frustrated", "angry", "upset", "terrible", "awful", "horrible",
+          "worst", "hate", "useless", "waste of time", "ridiculous", "unacceptable",
+          "disappointed", "disgusted", "furious"
+        ],
+        "multiple_failed_attempts": [] // This is tracked separately by counting AI responses
+      };
+
+      // Check customer message for trigger phrases
       for (const trigger of handoffTriggers) {
-        if (lowerResponse.includes(trigger.toLowerCase())) {
-          shouldHandoff = true;
-          handoffReason = `Customer message contained trigger: "${trigger}"`;
-          break;
+        // Get phrases for this trigger (or use trigger itself as custom phrase)
+        const phrases = triggerPhraseMap[trigger] || [trigger];
+
+        for (const phrase of phrases) {
+          if (lowerCustomerMessage.includes(phrase.toLowerCase())) {
+            shouldHandoff = true;
+            handoffReason = `Customer message matched handoff trigger: "${phrase}"`;
+            break;
+          }
         }
+        if (shouldHandoff) break;
       }
 
-      // Check if AI explicitly wants to escalate
-      if (lowerResponse.includes("escalate") || 
-          lowerResponse.includes("human agent") ||
-          lowerResponse.includes("transfer you")) {
-        shouldHandoff = true;
-        handoffReason = "AI determined escalation needed";
+      // Check if AI explicitly wants to escalate (in its response)
+      if (!shouldHandoff) {
+        if (lowerResponse.includes("escalate") ||
+            lowerResponse.includes("human agent") ||
+            lowerResponse.includes("transfer you") ||
+            lowerResponse.includes("connect you with") ||
+            lowerResponse.includes("let me get someone")) {
+          shouldHandoff = true;
+          handoffReason = "AI determined escalation needed";
+        }
       }
 
       // 7. Store the AI response

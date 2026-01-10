@@ -8,7 +8,7 @@
 
 import { action } from "../_generated/server";
 import { v } from "convex/values";
-import { type OurAppRole, getWhopSdk, getWhopInstance } from "../lib/whop";
+import { type OurAppRole, getWhopSdk, getWhopInstance, fetchWhopUserInfo } from "../lib/whop";
 import { api } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 
@@ -578,14 +578,18 @@ export const onboardUser = action({
       let user: any;
 
       if (!existingUser) {
-        // NEW: Check for pending user by username
-        // Use default user data for now - can be enhanced later
-        const whopUser = {
+        // Fetch actual user info from Whop API
+        console.log(`[onboardUser] Fetching user info from Whop for: ${whopUserId}`);
+        const fetchedWhopUser = await fetchWhopUserInfo(whopUserId);
+
+        const whopUser = fetchedWhopUser || {
           id: whopUserId,
           username: `user_${whopUserId.substring(5, 15)}`,
           name: `User`,
           profilePicture: null as any
         };
+
+        console.log(`[onboardUser] User info: username=${whopUser.username}, name=${whopUser.name}`);
 
         const pendingUser = await ctx.runQuery(
           api.users.queries.getUserByWhopUsername,

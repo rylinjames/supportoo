@@ -119,3 +119,31 @@ export function getWhopConfig() {
     appId,
   };
 }
+
+/**
+ * Fetch user info from Whop API
+ */
+export async function fetchWhopUserInfo(whopUserId: string): Promise<WhopUserData | null> {
+  try {
+    const whop = getWhopInstance();
+    const user = await whop.users.retrieve(whopUserId);
+
+    if (!user) {
+      console.log(`[fetchWhopUserInfo] User not found: ${whopUserId}`);
+      return null;
+    }
+
+    return {
+      id: user.id,
+      username: user.username || `user_${whopUserId.substring(5, 15)}`,
+      name: user.name || user.username || `User`,
+      email: undefined, // Not available in this API response
+      profilePicture: user.profile_picture?.url
+        ? { sourceUrl: user.profile_picture.url }
+        : undefined,
+    };
+  } catch (error) {
+    console.error(`[fetchWhopUserInfo] Error fetching user ${whopUserId}:`, error);
+    return null;
+  }
+}

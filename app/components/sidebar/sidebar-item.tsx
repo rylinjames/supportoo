@@ -6,6 +6,7 @@ import {
 import { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 interface SidebarItemProps {
   icon: LucideIcon;
@@ -33,40 +34,45 @@ export function SidebarItem({
     ? `${pathname.split("/").slice(0, 3).join("/")}${href}`
     : undefined;
 
-  const className = `
-    group relative flex items-center gap-3 w-full rounded-md px-3 py-2
-    transition-colors duration-200
-    ${isCollapsed ? "justify-center" : ""}
-    ${
-      active
-        ? "bg-muted/50 text-foreground"
-        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-    }
-  `;
+  const baseClasses = cn(
+    "group relative flex items-center gap-3 w-full rounded-lg px-3 py-2.5",
+    "transition-all duration-200 ease-out",
+    isCollapsed && "justify-center px-2"
+  );
+
+  const stateClasses = cn(
+    active
+      ? "bg-muted text-foreground font-medium"
+      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+  );
 
   const content = href ? (
-    <Link href={fullHref!} className={className}>
+    <Link href={fullHref!} className={cn(baseClasses, stateClasses)}>
       <div className="relative flex-shrink-0">
-        <Icon className="h-5 w-5" />
-        {badge !== undefined && badge >= 0 && (
-          <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+        <Icon className={cn("h-[18px] w-[18px]", active && "text-primary")} />
+        {badge !== undefined && badge > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground shadow-sm">
             {badge > 99 ? "99+" : badge}
           </span>
         )}
       </div>
-      {!isCollapsed && <span className="text-body-sm truncate">{label}</span>}
+      {!isCollapsed && (
+        <span className="text-[13px] truncate leading-none">{label}</span>
+      )}
     </Link>
   ) : (
-    <button onClick={onClick} className={className}>
+    <button onClick={onClick} className={cn(baseClasses, stateClasses)}>
       <div className="relative flex-shrink-0">
-        <Icon className="h-5 w-5" />
-        {badge !== undefined && badge >= 0 && (
-          <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+        <Icon className={cn("h-[18px] w-[18px]", active && "text-primary")} />
+        {badge !== undefined && badge > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground shadow-sm">
             {badge > 99 ? "99+" : badge}
           </span>
         )}
       </div>
-      {!isCollapsed && <span className="text-body-sm truncate">{label}</span>}
+      {!isCollapsed && (
+        <span className="text-[13px] truncate leading-none">{label}</span>
+      )}
     </button>
   );
 
@@ -75,8 +81,8 @@ export function SidebarItem({
     return (
       <Tooltip>
         <TooltipTrigger asChild>{content}</TooltipTrigger>
-        <TooltipContent side="right">
-          <p className="text-body-sm">{label}</p>
+        <TooltipContent side="right" sideOffset={8}>
+          <p className="text-[13px] font-medium">{label}</p>
         </TooltipContent>
       </Tooltip>
     );

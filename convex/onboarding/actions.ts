@@ -8,7 +8,7 @@
 
 import { action } from "../_generated/server";
 import { v } from "convex/values";
-import { type OurAppRole, getWhopSdk } from "../lib/whop";
+import { type OurAppRole, getWhopSdk, getWhopInstance } from "../lib/whop";
 import { api } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 
@@ -185,6 +185,76 @@ async function getCompanyFromExperience(
 }
 
 /**
+ * Check user's access level via Whop API with retry logic
+ *
+ * Uses @whop/sdk REST API with COMPANY ID (not experience ID).
+ * Returns "admin" for team members (owner/admin/moderator/sales_manager),
+ * "customer" for customers with membership, or "no_access".
+ *
+ * IMPORTANT: Does NOT fall back to viewType (which is unreliable).
+ * Instead uses retry with exponential backoff, then DB cache fallback.
+ */
+async function checkWhopAccessLevel(
+  whopUserId: string,
+  whopCompanyId: string,
+  ctx: any
+): Promise<string> {
+  const maxRetries = 3;
+  const baseDelayMs = 200;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const whop = getWhopInstance();
+      console.log(`[checkWhopAccessLevel] Attempt ${attempt + 1}/${maxRetries}: Checking access for user ${whopUserId} to company ${whopCompanyId}`);
+
+      const accessCheck = await whop.users.checkAccess(whopCompanyId, { id: whopUserId });
+
+      console.log(`[checkWhopAccessLevel] API result: has_access=${accessCheck.has_access}, access_level=${accessCheck.access_level}`);
+
+      if (accessCheck.has_access) {
+        return accessCheck.access_level; // "admin" or "customer"
+      }
+      return "no_access";
+    } catch (error) {
+      console.warn(`[checkWhopAccessLevel] Attempt ${attempt + 1}/${maxRetries} failed:`, error);
+
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelayMs * Math.pow(2, attempt); // 200ms, 400ms, 800ms
+        console.log(`[checkWhopAccessLevel] Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+    }
+  }
+
+  // All retries failed - try DB cache fallback (NOT viewType!)
+  console.warn(`[checkWhopAccessLevel] All ${maxRetries} attempts failed, trying DB cache fallback`);
+
+  try {
+    const existingUser = await ctx.runQuery(api.users.queries.getUserByWhopUserId, { whopUserId });
+    if (existingUser) {
+      const company = await ctx.runQuery(api.companies.queries.getCompanyByWhopId, { whopCompanyId });
+      if (company) {
+        const cachedRole = await ctx.runQuery(
+          api.users.multi_company_helpers.getUserRoleInCompany,
+          { userId: existingUser._id, companyId: company._id }
+        );
+        if (cachedRole) {
+          console.warn(`[checkWhopAccessLevel] Using cached role from DB: ${cachedRole}`);
+          // Map our app roles back to access levels
+          return cachedRole === "customer" ? "customer" : "admin";
+        }
+      }
+    }
+  } catch (dbError) {
+    console.error(`[checkWhopAccessLevel] DB cache lookup also failed:`, dbError);
+  }
+
+  // No cached role = first-time user during API outage - fail explicitly
+  throw new Error("Unable to verify access with Whop. Please try again in a moment.");
+}
+
+/**
  * Main onboarding flow
  *
  * Called when a user accesses the app for the first time.
@@ -232,21 +302,9 @@ export const onboardUser = action({
     };
   }> => {
     try {
-      // Step 1: Determine access level based on viewType from iframe SDK
-      // viewType "admin", "analytics", or "preview" means the user is accessing from Whop admin/owner area
-      // viewType "app" means the user is accessing as a customer/member
-      console.log(`[onboardUser] View type from iframe SDK: ${viewType}`);
-      const accessLevel = (viewType === 'admin' || viewType === 'analytics' || viewType === 'preview') ? 'admin' : 'customer';
-      console.log(`[onboardUser] Determined access level: ${accessLevel}`);
-      const accessCheck = { hasAccess: true, accessLevel };
-
-      if (!accessCheck.hasAccess) {
-        return {
-          success: false,
-          redirectTo: `/experiences/${experienceId}/no-access`,
-          error: "You don't have access to this experience.",
-        };
-      }
+      // Step 1: Log viewType (we'll use Whop API for actual access check later)
+      // viewType from iframe SDK is unreliable - admins accessing via hub get "app"
+      console.log(`[onboardUser] View type from iframe SDK: ${viewType} (will verify via Whop API)`);
 
       // Step 2: First try to look up company by experienceId (fast path)
       console.log(`[onboardUser] Looking up company by experienceId: ${experienceId}`);
@@ -476,9 +534,24 @@ export const onboardUser = action({
         throw new Error("Failed to create company");
       }
 
-      // Step 5: Determine user's role
+      // Step 5: Determine user's access level via Whop API
+      // This is the AUTHORITATIVE check - uses @whop/sdk REST API with company ID
+      // Returns "admin" for team members, "customer" for members, "no_access" otherwise
+      // Uses retry logic with DB cache fallback (NOT viewType which is unreliable)
+      const accessLevel = await checkWhopAccessLevel(whopUserId, whopCompanyId, ctx);
+      console.log(`[onboardUser] Whop API access level: ${accessLevel}`);
+
+      if (accessLevel === "no_access") {
+        return {
+          success: false,
+          redirectTo: `/experiences/${experienceId}/no-access`,
+          error: "You don't have access to this company.",
+        };
+      }
+
+      // Step 6: Determine user's role in our app
       // If this is the first user creating the company, they are admin
-      // Otherwise, determine role based on access level
+      // Otherwise, determine role based on Whop API access level
       let role: OurAppRole;
       if (isFirstAdmin) {
         role = "admin";
@@ -486,9 +559,9 @@ export const onboardUser = action({
       } else {
         role = await determineUserRoleWithVerification(
           whopUserId,
-          company._id, // Pass the actual company ID we already found
-          accessCheck.accessLevel,
-          userToken, // Pass userToken for Whop API verification
+          company._id,
+          accessLevel, // Use Whop API access level instead of viewType
+          whopCompanyId, // Pass whopCompanyId for re-verification
           ctx
         );
         console.log(`[onboardUser] Determined role: ${role}`);
@@ -865,9 +938,7 @@ async function checkWhopAdminStatus(
 /**
  * Helper: Determine user's role with Whop API verification
  *
- * Enhanced version that verifies admin status via Whop API when viewType
- * suggests "customer" but user might actually be an owner/admin.
- *
+ * Uses the Whop API access level (already verified) to determine the user's role.
  * Also re-verifies existing "customer" roles to fix mis-assigned users.
  *
  * IMPORTANT: Takes companyId directly (not whopCompanyId) to avoid issues
@@ -877,8 +948,8 @@ async function checkWhopAdminStatus(
 async function determineUserRoleWithVerification(
   whopUserId: string,
   companyId: Id<"companies">,
-  accessLevel: string,
-  userToken: string | undefined,
+  accessLevel: string, // From Whop API: "admin", "customer", or "no_access"
+  whopCompanyId: string, // For re-verification of existing customers
   ctx: any
 ): Promise<OurAppRole> {
   // First, check if this user already exists in our database with a role
@@ -902,13 +973,23 @@ async function determineUserRoleWithVerification(
         `[determineUserRoleWithVerification] User ${whopUserId} already has role: ${existingRole} in company ${companyId}`
       );
 
-      // RE-VERIFY: If user is a "customer" but has userToken, check if they're actually an admin
+      // RE-VERIFY: If user is stored as "customer" but Whop API says "admin",
+      // upgrade them to "support" (they can be promoted to admin manually)
       // This fixes users who were mis-assigned due to viewType="app" issue
-      // Note: Whop API verification is disabled for now as /v5/me/companies returns 404
-      // The fix is to use the correct company ID (passed in) instead of looking it up by whopCompanyId
-      if (existingRole === "customer" && userToken) {
-        console.log(`[determineUserRoleWithVerification] User has customer role, but using correct company lookup now`);
-        // When Whop API works, we can re-enable verification here
+      if (existingRole === "customer" && accessLevel === "admin") {
+        console.log(
+          `[determineUserRoleWithVerification] User ${whopUserId} was customer but Whop API says admin - upgrading to support`
+        );
+        // Update their role in the database
+        await ctx.runMutation(
+          api.users.multi_company_helpers.updateUserRoleInCompany,
+          {
+            userId: existingUser._id,
+            companyId: companyId,
+            role: "support",
+          }
+        );
+        return "support";
       }
 
       return existingRole;
@@ -916,7 +997,6 @@ async function determineUserRoleWithVerification(
   }
 
   // User doesn't have a role yet - check if company has any admins
-  // Check if any admins already exist for this company
   const existingAdmins = await ctx.runQuery(
     api.users.multi_company_helpers.getTeamMembersForCompany,
     {
@@ -937,19 +1017,18 @@ async function determineUserRoleWithVerification(
     return "admin";
   }
 
-  // Admins exist - if accessLevel is already "admin", make them support
+  // Admins exist - use Whop API accessLevel to determine role
   if (accessLevel === "admin") {
+    // User is a team member in Whop - make them support (can be promoted to admin)
     console.log(
-      `[determineUserRoleWithVerification] ${adminCount} admins exist, ${whopUserId} (accessLevel: admin) will be: support`
+      `[determineUserRoleWithVerification] ${adminCount} admins exist, ${whopUserId} (Whop accessLevel: admin) will be: support`
     );
     return "support";
   }
 
   // accessLevel is "customer" - assign customer role
-  // Note: Whop API verification disabled as /v5/me/companies returns 404
-  // The core fix is using correct company ID, not duplicate lookup
   console.log(
-    `[determineUserRoleWithVerification] ${adminCount} admins exist, ${whopUserId} (accessLevel: ${accessLevel}) assigned customer role`
+    `[determineUserRoleWithVerification] ${adminCount} admins exist, ${whopUserId} (Whop accessLevel: ${accessLevel}) assigned customer role`
   );
   return "customer";
 }

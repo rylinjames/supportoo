@@ -219,51 +219,51 @@
   --error-dark: #f87171;
   --info-dark: #ff6524; /* Orange accent for info */
 
-  /* Backgrounds - Dark Mode (Figma's actual dark theme) */
-  --bg-primary: #121212; /* Main background  */
-  --bg-secondary: #1a1a1a; /* Lighter gray - cards and panels */
-  --bg-tertiary: #252525; /* Even lighter - inputs, hover states */
-  --bg-elevated: #181818; /* Slightly elevated - modals, popovers */
+  /* Backgrounds - Dark Mode (Polished Mailoo-style) */
+  --bg-primary: #0f0f0f; /* Deeper main background */
+  --bg-secondary: #161616; /* Subtle card background */
+  --bg-tertiary: #1f1f1f; /* Hover states, inputs */
+  --bg-elevated: #1a1a1a; /* Modals, popovers - slightly elevated */
 
-  /* Borders - Dark Mode */
+  /* Borders - Dark Mode (Softer, more refined) */
   --border-subtle: #1a1a1a; /* Very subtle borders */
-  --border-default: #252525; /* Standard borders */
-  --border-strong: #333333; /* Emphasized borders */
+  --border-default: #2a2a2a; /* Standard borders - slightly warmer */
+  --border-strong: #3a3a3a; /* Emphasized borders */
 
   /* Text - Dark Mode */
-  --text-primary: #ffffff; /* Pure white for primary text (Figma uses white) */
-  --text-secondary: #b3b3b3; /* Medium gray for secondary */
-  --text-tertiary: #808080; /* Darker gray for tertiary/disabled */
+  --text-primary: #ffffff; /* Pure white for primary text */
+  --text-secondary: #a1a1a1; /* Slightly softer secondary */
+  --text-tertiary: #6b6b6b; /* Darker gray for tertiary/disabled */
   --text-inverse: #000000; /* Black text on light backgrounds */
 
   /* ShadCN Compatibility - Dark Mode */
-  --background: #121212;
+  --background: #0f0f0f;
   --foreground: #ffffff;
-  --card: #1a1a1a;
+  --card: #161616;
   --card-foreground: #ffffff;
-  --popover: #181818;
+  --popover: #1a1a1a;
   --popover-foreground: #ffffff;
   --primary: #ff6524;
   --primary-foreground: #ffffff;
-  --secondary: #252525;
+  --secondary: #1f1f1f;
   --secondary-foreground: #ffffff;
-  --muted: #252525;
-  --muted-foreground: #b3b3b3;
+  --muted: #1f1f1f;
+  --muted-foreground: #a1a1a1;
   --accent: #ff6524;
   --accent-foreground: #ffffff;
   --destructive: #f87171;
   --destructive-foreground: #000000;
-  --border: #252525;
-  --input: #252525;
+  --border: #2a2a2a;
+  --input: #1f1f1f;
   --ring: #ff6524;
 
   /* ============================================
      SHADOWS - DARK MODE (Softer, more subtle)
      ============================================ */
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 12px 0 rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 12px 24px 0 rgba(0, 0, 0, 0.7);
-  --shadow-xl: 0 20px 40px 0 rgba(0, 0, 0, 0.8);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px 0 rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 24px 0 rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 20px 40px 0 rgba(0, 0, 0, 0.7);
 }
 
 @theme inline {

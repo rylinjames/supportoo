@@ -1,74 +1,114 @@
 "use client";
 
-import { MessageSquare, Settings as SettingsIcon, Eye, FolderOpen } from "lucide-react";
+import { useState } from "react";
+import {
+  MessageSquare,
+  Settings as SettingsIcon,
+  Eye,
+  Bot,
+  Blocks,
+  CreditCard,
+  ChartNoAxesColumn,
+  Users,
+  MoreHorizontal,
+  LucideIcon,
+} from "lucide-react";
 import { usePathname, useRouter, useParams } from "next/navigation";
 import { useUser } from "@/app/contexts/user-context";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
+
+interface NavItem {
+  id: string;
+  icon: LucideIcon;
+  label: string;
+  route: string;
+}
 
 interface MobileBottomNavProps {
-  userType: "customer" | "support" | "admin";
-  user?: any; // Current user data from Convex - will be replaced by context
+  userType: "customer" | "support" | "manager" | "viewer" | "admin";
+  user?: any;
 }
 
 export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
+  const [sheetOpen, setSheetOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const params = useParams();
   const experienceId = params?.experienceId as string;
-  const { userData } = useUser();
+  const { userData, getCurrentRole } = useUser();
 
-  // TEMPORARILY: Show nav for all users
-  // Customer has no bottom nav - they use the 3-dots menu in chat header
-  // if (userType === "customer") {
-  //   return null;
-  // }
+  const currentRole = getCurrentRole();
+  const effectiveUserType = currentRole || userType;
 
-  // Support navigation items
-  const supportNavItems = [
-    {
-      id: "support",
-      icon: MessageSquare,
-      label: "Support",
-      route: "/",
-    },
-    {
-      id: "settings",
-      icon: SettingsIcon,
-      label: "Settings",
-      route: "/settings",
-    },
-  ];
+  // Customer has no bottom nav
+  if (userType === "customer") {
+    return null;
+  }
 
-  // Admin navigation items
-  const adminNavItems = [
-    {
-      id: "support",
-      icon: MessageSquare,
-      label: "Support",
-      route: "/",
-    },
-    {
-      id: "workspace",
-      icon: FolderOpen,
-      label: "Workspace",
-      route: "/workspace",
-    },
-    {
-      id: "customer-test",
-      icon: Eye,
-      label: "Test",
-      route: "/customer-test",
-    },
-    {
-      id: "settings",
-      icon: SettingsIcon,
-      label: "Settings",
-      route: "/settings",
-    },
-  ];
+  // Define navigation items based on role
+  const getNavItems = (): NavItem[] => {
+    const baseItems: NavItem[] = [
+      { id: "support", icon: MessageSquare, label: "Support", route: "/" },
+    ];
 
-  const navItems = userType === "admin" ? adminNavItems : supportNavItems;
+    if (effectiveUserType === "admin") {
+      return [
+        ...baseItems,
+        { id: "ai-studio", icon: Bot, label: "AI Studio", route: "/ai-studio" },
+        { id: "workspace", icon: Blocks, label: "Products", route: "/workspace" },
+        { id: "team", icon: Users, label: "Team", route: "/workspace/team" },
+        { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
+        { id: "customer-test", icon: Eye, label: "Test", route: "/customer-test" },
+        { id: "billing", icon: CreditCard, label: "Billing", route: "/billing" },
+        { id: "settings", icon: SettingsIcon, label: "Settings", route: "/settings" },
+      ];
+    }
 
-  // Helper function to check if a route is active (same as sidebar)
+    if (effectiveUserType === "manager") {
+      return [
+        ...baseItems,
+        { id: "ai-studio", icon: Bot, label: "AI Studio", route: "/ai-studio" },
+        { id: "workspace", icon: Blocks, label: "Products", route: "/workspace" },
+        { id: "team", icon: Users, label: "Team", route: "/workspace/team" },
+        { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
+        { id: "customer-test", icon: Eye, label: "Test", route: "/customer-test" },
+        { id: "settings", icon: SettingsIcon, label: "Settings", route: "/settings" },
+      ];
+    }
+
+    if (effectiveUserType === "viewer") {
+      return [
+        ...baseItems,
+        { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
+        { id: "settings", icon: SettingsIcon, label: "Settings", route: "/settings" },
+      ];
+    }
+
+    // Support role
+    return [
+      ...baseItems,
+      { id: "workspace", icon: Blocks, label: "Products", route: "/workspace" },
+      { id: "customer-test", icon: Eye, label: "Test", route: "/customer-test" },
+      { id: "settings", icon: SettingsIcon, label: "Settings", route: "/settings" },
+    ];
+  };
+
+  const navItems = getNavItems();
+
+  // Show max 4 items in bottom bar, rest go to "More" sheet
+  const maxVisibleItems = 4;
+  const visibleItems = navItems.slice(0, maxVisibleItems);
+  const overflowItems = navItems.slice(maxVisibleItems);
+  const hasOverflow = overflowItems.length > 0;
+
+  // Helper function to check if a route is active
   const isActiveRoute = (route: string) => {
     const pathParts = pathname.split("/");
     const experienceIndex = pathParts.findIndex((part) =>
@@ -79,13 +119,20 @@ export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
     const routeAfterExperience =
       "/" + pathParts.slice(experienceIndex + 1).join("/");
 
-    // Handle default route case
     if (routeAfterExperience === "/" && route === "/") {
+      return true;
+    }
+
+    // Check for partial matches
+    if (route !== "/" && routeAfterExperience.startsWith(route)) {
       return true;
     }
 
     return routeAfterExperience === route;
   };
+
+  // Check if any overflow item is active
+  const isOverflowActive = overflowItems.some((item) => isActiveRoute(item.route));
 
   // Helper function to build full href
   const buildFullHref = (route: string) => {
@@ -94,33 +141,95 @@ export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
 
   const handleNavigation = (route: string) => {
     router.push(buildFullHref(route));
+    setSheetOpen(false);
+  };
+
+  const NavButton = ({
+    item,
+    isActive,
+    onClick,
+  }: {
+    item: NavItem;
+    isActive: boolean;
+    onClick: () => void;
+  }) => {
+    const Icon = item.icon;
+    return (
+      <button
+        onClick={onClick}
+        className={cn(
+          "flex flex-col items-center justify-center gap-1.5 px-3 py-1 rounded-lg",
+          "transition-colors min-w-[56px]",
+          isActive ? "text-primary" : "text-muted-foreground"
+        )}
+      >
+        <Icon className="h-5 w-5" />
+        <span className="text-[11px] font-medium leading-none truncate max-w-[56px]">
+          {item.label}
+        </span>
+      </button>
+    );
   };
 
   return (
-    <nav className="border-t border-border bg-card safe-area-inset-bottom">
-      <div className="flex items-center justify-around px-4 py-3">
-        {/* Navigation Items */}
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = isActiveRoute(item.route);
+    <nav className="border-t border-border bg-card safe-area-inset-bottom xl:hidden">
+      <div className="flex items-center justify-around px-2 py-3">
+        {/* Visible Navigation Items */}
+        {visibleItems.map((item) => (
+          <NavButton
+            key={item.id}
+            item={item}
+            isActive={isActiveRoute(item.route)}
+            onClick={() => handleNavigation(item.route)}
+          />
+        ))}
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => handleNavigation(item.route)}
-              className={`
-                flex flex-col items-center justify-center gap-1.5 px-4 py-1 rounded-lg
-                transition-colors
-                ${isActive ? "text-primary" : "text-muted-foreground"}
-              `}
-            >
-              <Icon className="h-5 w-5" />
-              <span className="text-[11px] font-medium leading-none">
-                {item.label}
-              </span>
-            </button>
-          );
-        })}
+        {/* More Button with Sheet for overflow items */}
+        {hasOverflow && (
+          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+            <SheetTrigger asChild>
+              <button
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1.5 px-3 py-1 rounded-lg",
+                  "transition-colors min-w-[56px]",
+                  isOverflowActive || sheetOpen
+                    ? "text-primary"
+                    : "text-muted-foreground"
+                )}
+              >
+                <MoreHorizontal className="h-5 w-5" />
+                <span className="text-[11px] font-medium leading-none">More</span>
+              </button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="pb-safe">
+              <SheetHeader className="pb-2">
+                <SheetTitle>More Options</SheetTitle>
+              </SheetHeader>
+              <div className="grid grid-cols-4 gap-4 py-4">
+                {overflowItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = isActiveRoute(item.route);
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleNavigation(item.route)}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-2 p-3 rounded-xl",
+                        "transition-colors",
+                        isActive
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                    >
+                      <Icon className="h-6 w-6" />
+                      <span className="text-xs font-medium">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
       </div>
     </nav>
   );

@@ -9,32 +9,99 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Bot,
   Blocks,
   CreditCard,
   MessageSquare,
   Settings,
   ChartNoAxesColumn,
+  FileText,
+  Users,
+  LucideIcon,
 } from "lucide-react";
 import { Separator } from "../../../components/ui/separator";
 import { SidebarItem } from "./sidebar-item";
 import { UserSection } from "./user-section";
 import { CompanySwitcher } from "../common/company-switcher";
 import { useUser } from "@/app/contexts/user-context";
+import { cn } from "@/lib/utils";
+
+interface NavItem {
+  id: string;
+  icon: LucideIcon;
+  label: string;
+  route: string;
+  badge?: number;
+}
+
+interface NavSection {
+  id: string;
+  label: string | null;
+  items: NavItem[];
+  defaultExpanded?: boolean;
+}
+
+interface SidebarSectionProps {
+  section: NavSection;
+  isCollapsed: boolean;
+  isActiveRoute: (route: string) => boolean;
+}
+
+function SidebarSection({ section, isCollapsed, isActiveRoute }: SidebarSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(section.defaultExpanded ?? true);
+
+  return (
+    <div className="py-1">
+      {section.label && !isCollapsed && (
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center justify-between w-full px-3 py-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+        >
+          <span>{section.label}</span>
+          <ChevronDown
+            className={cn(
+              "h-3 w-3 transition-transform duration-200",
+              isExpanded && "rotate-180"
+            )}
+          />
+        </button>
+      )}
+      <div
+        className={cn(
+          "space-y-0.5 overflow-hidden transition-all duration-200",
+          section.label && !isExpanded && !isCollapsed && "max-h-0 opacity-0",
+          (isExpanded || !section.label || isCollapsed) && "max-h-[500px] opacity-100"
+        )}
+      >
+        {section.items.map((item) => (
+          <SidebarItem
+            key={item.id}
+            icon={item.icon}
+            label={item.label}
+            isCollapsed={isCollapsed}
+            badge={item.badge}
+            active={isActiveRoute(item.route)}
+            href={item.route}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface SidebarProps {
   userType: "customer" | "support" | "manager" | "viewer" | "admin";
-  user?: any; // Current user data from Convex - will be replaced by context
+  user?: any;
 }
 
 export function Sidebar({ userType, user }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
-  const { userData, getCurrentRole } = useUser(); // Use new context
+  const { userData, getCurrentRole } = useUser();
 
-  // Get current role from context instead of props
   const currentRole = getCurrentRole();
-  const effectiveUserType = currentRole || userType; // Fallback to prop for now
+  const effectiveUserType = currentRole || userType;
 
   // Get conversations to calculate badge count
   const conversations = useQuery(
@@ -44,7 +111,6 @@ export function Sidebar({ userType, user }: SidebarProps) {
       : "skip"
   );
 
-  // Count unresolved conversations (all except "resolved")
   const unresolvedCount = conversations
     ? conversations.filter((conv: any) => conv.status !== "resolved").length
     : 0;
@@ -54,155 +120,8 @@ export function Sidebar({ userType, user }: SidebarProps) {
     return null;
   }
 
-  // Viewer navigation items (read-only access)
-  const viewerNavItems = [
-    {
-      id: "support",
-      icon: MessageSquare,
-      label: "Support",
-      route: "/",
-      badge: unresolvedCount,
-    },
-    {
-      id: "insights",
-      icon: ChartNoAxesColumn,
-      label: "Insights",
-      route: "/insights",
-    },
-    {
-      id: "settings",
-      icon: Settings,
-      label: "Settings",
-      route: "/settings",
-    },
-  ];
-
-  // Support navigation items
-  const supportNavItems = [
-    {
-      id: "support",
-      icon: MessageSquare,
-      label: "Support",
-      route: "/",
-      badge: unresolvedCount,
-    },
-    {
-      id: "workspace",
-      icon: Blocks,
-      label: "Workspace",
-      route: "/workspace",
-    },
-    {
-      id: "customer-test",
-      icon: Eye,
-      label: "Customer Test",
-      route: "/customer-test",
-    },
-    {
-      id: "settings",
-      icon: Settings,
-      label: "Settings",
-      route: "/settings",
-    },
-  ];
-
-  // Manager navigation items (everything except billing)
-  const managerNavItems = [
-    {
-      id: "support",
-      icon: MessageSquare,
-      label: "Support",
-      route: "/",
-      badge: unresolvedCount,
-    },
-    {
-      id: "ai-studio",
-      icon: Bot,
-      label: "AI Studio",
-      route: "/ai-studio",
-    },
-    {
-      id: "insights",
-      icon: ChartNoAxesColumn,
-      label: "Insights",
-      route: "/insights",
-    },
-    {
-      id: "workspace",
-      icon: Blocks,
-      label: "Workspace",
-      route: "/workspace",
-    },
-    {
-      id: "customer-test",
-      icon: Eye,
-      label: "Customer Test",
-      route: "/customer-test",
-    },
-    {
-      id: "settings",
-      icon: Settings,
-      label: "Settings",
-      route: "/settings",
-    },
-  ];
-
-  // Admin navigation items
-  const adminNavItems = [
-    {
-      id: "support",
-      icon: MessageSquare,
-      label: "Support",
-      route: "/",
-      badge: unresolvedCount,
-    },
-    {
-      id: "ai-studio",
-      icon: Bot,
-      label: "AI Studio",
-      route: "/ai-studio",
-    },
-    {
-      id: "insights",
-      icon: ChartNoAxesColumn,
-      label: "Insights",
-      route: "/insights",
-    },
-    {
-      id: "workspace",
-      icon: Blocks,
-      label: "Workspace",
-      route: "/workspace",
-    },
-    {
-      id: "billing",
-      icon: CreditCard,
-      label: "Billing",
-      route: "/billing",
-    },
-    {
-      id: "customer-test",
-      icon: Eye,
-      label: "Customer Test",
-      route: "/customer-test",
-    },
-    {
-      id: "settings",
-      icon: Settings,
-      label: "Settings",
-      route: "/settings",
-    },
-  ];
-
-  const navItems =
-    effectiveUserType === "admin" ? adminNavItems :
-    effectiveUserType === "manager" ? managerNavItems :
-    effectiveUserType === "viewer" ? viewerNavItems :
-    supportNavItems;
-
   // Helper function to check if a route is active
   const isActiveRoute = (route: string) => {
-    // Extract the path after /experiences/[experienceId]
     const pathParts = pathname.split("/");
     const experienceIndex = pathParts.findIndex((part) =>
       part.startsWith("exp_")
@@ -212,35 +131,123 @@ export function Sidebar({ userType, user }: SidebarProps) {
     const routeAfterExperience =
       "/" + pathParts.slice(experienceIndex + 1).join("/");
 
-    // Handle default route case: if we're just on /experiences/[experienceId], show Support as active
     if (routeAfterExperience === "/" && route === "/") {
+      return true;
+    }
+
+    // Check for partial matches (e.g., /workspace/templates matches /workspace)
+    if (route !== "/" && routeAfterExperience.startsWith(route)) {
       return true;
     }
 
     return routeAfterExperience === route;
   };
 
+  // Define navigation sections based on role
+  const getNavSections = (): NavSection[] => {
+    const supportSection: NavSection = {
+      id: "support",
+      label: null,
+      items: [
+        { id: "support", icon: MessageSquare, label: "Support", route: "/", badge: unresolvedCount },
+      ],
+    };
+
+    const workspaceSection: NavSection = {
+      id: "workspace",
+      label: "Workspace",
+      defaultExpanded: true,
+      items: [
+        { id: "ai-studio", icon: Bot, label: "AI Studio", route: "/ai-studio" },
+        { id: "products", icon: Blocks, label: "Products", route: "/workspace" },
+        { id: "team", icon: Users, label: "Team", route: "/workspace/team" },
+      ],
+    };
+
+    const analyticsSection: NavSection = {
+      id: "analytics",
+      label: "Analytics",
+      defaultExpanded: false,
+      items: [
+        { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
+        { id: "customer-test", icon: Eye, label: "Customer Test", route: "/customer-test" },
+      ],
+    };
+
+    const settingsSection: NavSection = {
+      id: "settings",
+      label: null,
+      items: [
+        { id: "settings", icon: Settings, label: "Settings", route: "/settings" },
+      ],
+    };
+
+    const billingSection: NavSection = {
+      id: "billing",
+      label: null,
+      items: [
+        { id: "billing", icon: CreditCard, label: "Billing", route: "/billing" },
+      ],
+    };
+
+    // Role-based navigation
+    if (effectiveUserType === "admin") {
+      return [supportSection, workspaceSection, analyticsSection, billingSection, settingsSection];
+    }
+
+    if (effectiveUserType === "manager") {
+      return [supportSection, workspaceSection, analyticsSection, settingsSection];
+    }
+
+    if (effectiveUserType === "viewer") {
+      return [
+        supportSection,
+        {
+          id: "analytics",
+          label: null,
+          items: [{ id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" }],
+        },
+        settingsSection,
+      ];
+    }
+
+    // Support role
+    return [
+      supportSection,
+      {
+        id: "workspace",
+        label: "Workspace",
+        defaultExpanded: true,
+        items: [
+          { id: "products", icon: Blocks, label: "Products", route: "/workspace" },
+          { id: "customer-test", icon: Eye, label: "Customer Test", route: "/customer-test" },
+        ],
+      },
+      settingsSection,
+    ];
+  };
+
+  const navSections = getNavSections();
+
   return (
     <aside
-      className={`
-        relative flex flex-col h-screen bg-background border-r border-border
-        transition-all duration-300 ease-in-out max-xl:hidden
-        ${isCollapsed ? "w-[56px]" : "w-[240px]"}
-      `}
+      className={cn(
+        "relative flex flex-col h-screen bg-background border-r border-border",
+        "transition-all duration-300 ease-in-out max-xl:hidden",
+        isCollapsed ? "w-[56px]" : "w-[240px]"
+      )}
     >
-      {/* Header: Logo + Collapse Button */}
+      {/* Header: Collapse Button Only */}
       <div
-        className={`flex items-center gap-2 p-3 ${
-          isCollapsed ? "justify-center" : "justify-between"
-        }`}
-      >
-        {!isCollapsed && (
-          <h1 className="text-h2 text-foreground font-semibold">CHAT</h1>
+        className={cn(
+          "flex items-center h-14 px-3",
+          isCollapsed ? "justify-center" : "justify-end"
         )}
-
+      >
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {isCollapsed ? (
             <ChevronRight className="h-4 w-4" />
@@ -252,18 +259,19 @@ export function Sidebar({ userType, user }: SidebarProps) {
 
       <Separator />
 
-      {/* Navigation Items */}
-      <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-        {navItems.map((item) => (
-          <SidebarItem
-            key={item.id}
-            icon={item.icon}
-            label={item.label}
-            isCollapsed={isCollapsed}
-            badge={item.badge}
-            active={isActiveRoute(item.route)}
-            href={item.route}
-          />
+      {/* Navigation Sections */}
+      <nav className="flex-1 px-2 py-2 overflow-y-auto">
+        {navSections.map((section, index) => (
+          <div key={section.id}>
+            <SidebarSection
+              section={section}
+              isCollapsed={isCollapsed}
+              isActiveRoute={isActiveRoute}
+            />
+            {index < navSections.length - 1 && section.label && (
+              <Separator className="my-2" />
+            )}
+          </div>
         ))}
       </nav>
 
@@ -271,12 +279,13 @@ export function Sidebar({ userType, user }: SidebarProps) {
 
       {/* Company Switcher */}
       {!isCollapsed && userData && userData.userCompanies.length > 1 && (
-        <div className="p-3">
-          <CompanySwitcher />
-        </div>
+        <>
+          <div className="p-3">
+            <CompanySwitcher />
+          </div>
+          <Separator />
+        </>
       )}
-
-      <Separator />
 
       {/* User Section at BOTTOM */}
       <div className="p-3">

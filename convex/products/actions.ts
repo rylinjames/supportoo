@@ -88,6 +88,29 @@ export const syncProducts = action({
         throw new Error("No Whop company ID found for this company");
       }
 
+      // CRITICAL: Verify this company's whopCompanyId is unique before syncing
+      // This prevents cross-contamination if duplicate whopCompanyIds exist
+      const uniquenessCheck = await ctx.runQuery(
+        api.companies.queries.verifyWhopCompanyIdUnique,
+        { companyId }
+      );
+
+      if (!uniquenessCheck.valid) {
+        console.error(`[syncProducts] ❌ DUPLICATE whopCompanyId DETECTED!`);
+        console.error(`[syncProducts] ${uniquenessCheck.error}`);
+        return {
+          success: false,
+          syncedCount: 0,
+          deletedCount: 0,
+          errors: [
+            `Data integrity error: ${uniquenessCheck.error}. ` +
+            `Please resolve duplicate whopCompanyIds before syncing. ` +
+            `Use findDuplicateWhopCompanyIds query to identify and clean up duplicates.`
+          ],
+        };
+      }
+
+      console.log(`[syncProducts] ✅ whopCompanyId uniqueness verified`);
       console.log(`[syncProducts] Fetching products for Whop company: ${company.whopCompanyId}`);
 
       // Get App API key for multi-tenant product access
@@ -192,11 +215,22 @@ export const syncProducts = action({
 
         // Log company IDs of fetched products to verify multi-tenancy
         if (allProducts.length > 0) {
-          const companyIds = [...new Set(allProducts.map((p: any) => p.company_id || p.companyId || 'unknown'))];
+          // Strict validation: products MUST have company_id, no fallback to 'unknown'
+          const companyIds = [...new Set(allProducts.map((p: any) => p.company_id || 'MISSING'))];
           console.log(`[syncProducts] 🏢 Product Company IDs: ${companyIds.join(', ')}`);
           console.log(`[syncProducts] Expected Company ID: ${company.whopCompanyId}`);
 
-          const allMatch = companyIds.every(id => id === company.whopCompanyId || id === 'unknown');
+          // Check for products with missing company_id
+          const hasMissingCompanyId = companyIds.includes('MISSING');
+          if (hasMissingCompanyId) {
+            console.log(`[syncProducts] ⚠️ WARNING: Some products are missing company_id field`);
+            const missingCount = allProducts.filter((p: any) => !p.company_id).length;
+            console.log(`[syncProducts] Products without company_id: ${missingCount}`);
+          }
+
+          // Strict check: ALL products must match expected company ID exactly
+          // No longer allowing 'unknown' to pass - this was a security hole
+          const allMatch = companyIds.every(id => id === company.whopCompanyId);
           if (allMatch) {
             console.log(`[syncProducts] ✅ MULTI-TENANCY CHECK PASSED - All products belong to correct company`);
           } else {
@@ -210,6 +244,7 @@ export const syncProducts = action({
               deletedCount: 0,
               errors: [
                 `Multi-tenancy violation: API returned products from ${companyIds.join(', ')} but expected ${company.whopCompanyId}. ` +
+                `${hasMissingCompanyId ? 'Some products are missing company_id. ' : ''}` +
                 `Please sync from the UI to use your authentication token.`
               ],
             };
@@ -319,6 +354,22 @@ async function syncSingleProduct(
   whopCompanyId: string,
   whopProduct: any
 ) {
+  // STRICT VALIDATION: Product MUST have a company_id
+  if (!whopProduct.company_id) {
+    throw new Error(
+      `Product ${whopProduct.id} is missing company_id field. ` +
+      `Cannot sync product without knowing which company it belongs to.`
+    );
+  }
+
+  // STRICT VALIDATION: Product MUST belong to the expected company
+  if (whopProduct.company_id !== whopCompanyId) {
+    throw new Error(
+      `Product ${whopProduct.id} belongs to company ${whopProduct.company_id}, ` +
+      `not ${whopCompanyId}. Refusing to sync to prevent cross-contamination.`
+    );
+  }
+
   // Map Whop product data to our schema
   // Note: Whop API uses "headline" for description, not "description"
   const description = whopProduct.headline || whopProduct.description || "";
@@ -326,7 +377,7 @@ async function syncSingleProduct(
   const productData = {
     companyId,
     whopProductId: whopProduct.id,
-    whopCompanyId: whopProduct.company_id || whopProduct.companyId || whopCompanyId,
+    whopCompanyId: whopProduct.company_id, // Use the verified company_id directly, no fallback
     title: whopProduct.title || whopProduct.name || "Untitled Product",
     description,
 

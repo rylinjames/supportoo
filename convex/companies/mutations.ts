@@ -9,6 +9,25 @@ import { v } from "convex/values";
 import { api } from "../_generated/api";
 
 /**
+ * Update company name
+ *
+ * Used to fix companies that were created with the experience name
+ * instead of the actual Whop business/store name.
+ */
+export const updateCompanyName = mutation({
+  args: {
+    companyId: v.id("companies"),
+    name: v.string(),
+  },
+  handler: async (ctx, { companyId, name }) => {
+    await ctx.db.patch(companyId, {
+      name,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
  * Update experience ID for an existing company
  */
 export const updateExperienceId = mutation({
@@ -633,6 +652,20 @@ export const fixWhopCompanyId = mutation({
     if (!company) {
       console.log(`No company found with whopCompanyId: ${oldWhopCompanyId}`);
       return { success: false, error: "Company not found" };
+    }
+
+    // CRITICAL: Check if newWhopCompanyId is already used by another company
+    const existingWithNewId = await ctx.db
+      .query("companies")
+      .withIndex("by_whop_company_id", (q) => q.eq("whopCompanyId", newWhopCompanyId))
+      .first();
+
+    if (existingWithNewId && existingWithNewId._id !== company._id) {
+      console.log(`[fixWhopCompanyId] ERROR: whopCompanyId ${newWhopCompanyId} already used by ${existingWithNewId._id}`);
+      return {
+        success: false,
+        error: `whopCompanyId ${newWhopCompanyId} is already used by company ${existingWithNewId._id} (${existingWithNewId.name})`,
+      };
     }
 
     console.log(`Found company to fix: ${company._id} (${company.name})`);

@@ -13,6 +13,43 @@ import { api } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 
 /**
+ * Fetch the Whop business/store name from the Whop API
+ *
+ * This returns the actual store/brand name (e.g., "BooKoo Apps") rather than
+ * the experience/app installation name (e.g., "support ai chat test").
+ */
+async function fetchWhopBusinessName(whopCompanyId: string): Promise<string | null> {
+  const apiKey = process.env.WHOP_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    console.log(`[fetchWhopBusinessName] Fetching business name for ${whopCompanyId}...`);
+    const response = await fetch(
+      `https://api.whop.com/api/v2/businesses/${whopCompanyId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+        }
+      }
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+      const businessName = data.title || data.name || null;
+      console.log(`[fetchWhopBusinessName] Got business name: ${businessName}`);
+      return businessName;
+    } else {
+      console.log(`[fetchWhopBusinessName] API returned ${response.status}`);
+    }
+  } catch (e) {
+    console.log(`[fetchWhopBusinessName] Failed:`, e);
+  }
+  return null;
+}
+
+/**
  * Get company info from Whop experience
  * This is the key to multi-tenancy - we get the ACTUAL company from the experience
  *
@@ -54,9 +91,11 @@ async function getCompanyFromExperience(
 
       if (matchingExperience && matchingExperience.company_id) {
         console.log(`[getCompanyFromExperience] ✅ Found company from /v5/app/experiences: ${matchingExperience.company_id}`);
+        // Fetch the actual business/store name instead of using experience name
+        const businessName = await fetchWhopBusinessName(matchingExperience.company_id);
         return {
           whopCompanyId: matchingExperience.company_id,
-          companyName: matchingExperience.name || "My Company",
+          companyName: businessName || matchingExperience.name || "My Company",
         };
       } else {
         console.log(`[getCompanyFromExperience] Experience ${experienceId} not found in app experiences list`);
@@ -85,9 +124,11 @@ async function getCompanyFromExperience(
 
       const companyId = v5Data.company_id || v5Data.company?.id || v5Data.companyId;
       if (companyId) {
+        // Fetch the actual business/store name instead of using experience name
+        const businessName = await fetchWhopBusinessName(companyId);
         return {
           whopCompanyId: companyId,
-          companyName: v5Data.company?.title || v5Data.company?.name || v5Data.name || "My Company",
+          companyName: businessName || v5Data.company?.title || v5Data.company?.name || v5Data.name || "My Company",
         };
       }
     }
@@ -112,9 +153,11 @@ async function getCompanyFromExperience(
 
       const companyId = appsData.company_id || appsData.company?.id;
       if (companyId) {
+        // Fetch the actual business/store name instead of using experience name
+        const businessName = await fetchWhopBusinessName(companyId);
         return {
           whopCompanyId: companyId,
-          companyName: appsData.company?.title || appsData.company?.name || appsData.name || "My Company",
+          companyName: businessName || appsData.company?.title || appsData.company?.name || appsData.name || "My Company",
         };
       }
     }
@@ -139,9 +182,11 @@ async function getCompanyFromExperience(
 
       const companyId = v2Data.company_id || v2Data.company?.id || v2Data.companyId;
       if (companyId) {
+        // Fetch the actual business/store name instead of using experience name
+        const businessName = await fetchWhopBusinessName(companyId);
         return {
           whopCompanyId: companyId,
-          companyName: v2Data.company?.title || v2Data.company?.name || v2Data.name || "My Company",
+          companyName: businessName || v2Data.company?.title || v2Data.company?.name || v2Data.name || "My Company",
         };
       }
     }
@@ -170,9 +215,11 @@ async function getCompanyFromExperience(
 
         const companyId = accessData.company_id || accessData.page_id || accessData.company?.id;
         if (companyId) {
+          // Fetch the actual business/store name instead of using experience name
+          const businessName = await fetchWhopBusinessName(companyId);
           return {
             whopCompanyId: companyId,
-            companyName: accessData.company?.title || accessData.company?.name || "My Company",
+            companyName: businessName || accessData.company?.title || accessData.company?.name || "My Company",
           };
         }
       }
@@ -325,17 +372,19 @@ export const onboardUser = action({
         companyName = company.name;
       } else if (companyIdFromHeader) {
         // Step 2.5: Use company ID from header if available
-        console.log(`[onboardUser] Using company ID from header: ${companyIdFromHeader}`);
-        whopCompanyId = companyIdFromHeader;
-        companyName = "My Company"; // Will be updated when we fetch company details
+        // SECURITY: Verify the header value against authoritative API before trusting it
+        console.log(`[onboardUser] Verifying company ID from header: ${companyIdFromHeader}`);
 
-        // Check if company already exists in our DB
+        // First check if we already have this company - if so, trust it (already verified)
         company = await ctx.runQuery(
           api.companies.queries.getCompanyByWhopId,
           { whopCompanyId: companyIdFromHeader }
         );
 
         if (company) {
+          // Company exists and was previously verified
+          console.log(`[onboardUser] Header company verified (exists in DB): ${company._id}`);
+          whopCompanyId = companyIdFromHeader;
           companyName = company.name;
           // Update experienceId mapping if not set
           if (!company.whopExperienceId) {
@@ -343,6 +392,33 @@ export const onboardUser = action({
               companyId: company._id,
               experienceId,
             });
+          }
+        } else {
+          // New company from header - verify against Whop API before trusting
+          console.log(`[onboardUser] New company from header, verifying with Whop API...`);
+          const apiKey = process.env.WHOP_API_KEY;
+
+          try {
+            // Verify this experienceId actually belongs to the claimed company
+            const experienceInfo = await getCompanyFromExperience(experienceId, userToken);
+
+            if (experienceInfo.whopCompanyId === companyIdFromHeader) {
+              // Header matches API - safe to use
+              console.log(`[onboardUser] ✅ Header verified: ${companyIdFromHeader} matches API`);
+              whopCompanyId = companyIdFromHeader;
+              companyName = experienceInfo.companyName || "My Company";
+            } else {
+              // Header doesn't match API - use API value instead (potential injection attempt)
+              console.warn(`[onboardUser] ⚠️ Header mismatch! Header: ${companyIdFromHeader}, API: ${experienceInfo.whopCompanyId}`);
+              console.warn(`[onboardUser] Using API value for security`);
+              whopCompanyId = experienceInfo.whopCompanyId;
+              companyName = experienceInfo.companyName || "My Company";
+            }
+          } catch (verifyError) {
+            // Can't verify - don't trust header, fall through to other methods
+            console.warn(`[onboardUser] Could not verify header company ID: ${verifyError}`);
+            console.warn(`[onboardUser] Not trusting unverified header value`);
+            // Don't set whopCompanyId - let it fall through to other methods
           }
         }
       } else if (companyRoute) {
@@ -532,6 +608,21 @@ export const onboardUser = action({
 
       if (!company) {
         throw new Error("Failed to create company");
+      }
+
+      // Step 4.5: Auto-fix company name if it was stored with the experience name
+      // This ensures existing companies get updated with the correct business/store name
+      if (!isNewCompany && whopCompanyId) {
+        const correctBusinessName = await fetchWhopBusinessName(whopCompanyId);
+        if (correctBusinessName && correctBusinessName !== company.name) {
+          console.log(`[onboardUser] Updating company name from "${company.name}" to "${correctBusinessName}"`);
+          await ctx.runMutation(api.companies.mutations.updateCompanyName, {
+            companyId: company._id,
+            name: correctBusinessName,
+          });
+          // Update local reference for use in response
+          companyName = correctBusinessName;
+        }
       }
 
       // Step 5: Determine user's access level via Whop API

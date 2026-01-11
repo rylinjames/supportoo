@@ -21,6 +21,7 @@ import {
   Download,
   Volume2,
   VolumeX,
+  CheckCircle2,
 } from "lucide-react";
 import {
   MessageBubble,
@@ -930,6 +931,19 @@ export function ConversationDetail({
 
             <KeyboardShortcutsDialog />
 
+            {/* Resolve Button - Prominent! */}
+            {conversation.status !== "resolved" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowResolveDialog(true)}
+                className="gap-2"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Resolve
+              </Button>
+            )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="p-2">
@@ -937,11 +951,6 @@ export function ConversationDetail({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {conversation.status !== "resolved" && (
-                  <DropdownMenuItem onClick={() => setShowResolveDialog(true)}>
-                    Mark as resolved
-                  </DropdownMenuItem>
-                )}
                 <DropdownMenuItem onClick={() => setShowCustomerProfile(true)}>
                   View customer profile
                 </DropdownMenuItem>

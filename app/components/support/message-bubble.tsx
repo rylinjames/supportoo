@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
 import { useState } from "react";
-import { BotMessageSquare, Eye, X, Check } from "lucide-react";
+import { BotMessageSquare, Eye, Check } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
@@ -14,6 +14,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export type MessageType = "customer" | "ai" | "agent" | "system";
 
@@ -42,6 +44,33 @@ interface MessageBubbleProps {
   viewType?: "customer" | "support"; // customer view = customer on right, support view = customer on left
   currentUserId?: string; // For "You" logic
 }
+
+// Markdown components for styled rendering
+const markdownComponents = {
+  p: ({ children }: any) => <p className="mb-2 last:mb-0">{children}</p>,
+  ul: ({ children }: any) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+  ol: ({ children }: any) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+  li: ({ children }: any) => <li className="text-body-sm">{children}</li>,
+  strong: ({ children }: any) => <strong className="font-semibold">{children}</strong>,
+  em: ({ children }: any) => <em className="italic">{children}</em>,
+  code: ({ children }: any) => (
+    <code className="px-1 py-0.5 rounded bg-secondary text-xs font-mono">{children}</code>
+  ),
+  pre: ({ children }: any) => (
+    <pre className="p-3 rounded-lg bg-secondary overflow-x-auto mb-2 text-xs">{children}</pre>
+  ),
+  a: ({ href, children }: any) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline">
+      {children}
+    </a>
+  ),
+  h1: ({ children }: any) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
+  h2: ({ children }: any) => <h2 className="text-base font-bold mb-2">{children}</h2>,
+  h3: ({ children }: any) => <h3 className="text-sm font-bold mb-1">{children}</h3>,
+  blockquote: ({ children }: any) => (
+    <blockquote className="border-l-2 border-primary pl-3 italic text-muted-foreground mb-2">{children}</blockquote>
+  ),
+};
 
 export function MessageBubble({
   message,
@@ -111,6 +140,77 @@ export function MessageBubble({
     return null;
   };
 
+  // Render attachment
+  const renderAttachment = () => {
+    if (!message.attachment) return null;
+
+    if (message.attachment.type.startsWith("image/")) {
+      return (
+        <TooltipProvider>
+          <div className="relative group cursor-pointer">
+            <img
+              src={message.attachment.url}
+              alt={message.attachment.name}
+              className="rounded-lg max-w-full h-auto max-h-[200px] object-cover"
+              onClick={() => setShowImageDialog(true)}
+            />
+            {/* Hover overlay */}
+            <div
+              className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg flex items-end justify-start cursor-pointer"
+              onClick={() => setShowImageDialog(true)}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="p-2">
+                    <Eye className="h-5 w-5 text-white" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>View image</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+        </TooltipProvider>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2 p-2 rounded bg-background/50">
+        <div className="flex-1 min-w-0">
+          <p className="text-body-sm truncate">{message.attachment.name}</p>
+          <p className="text-xs text-muted-foreground">
+            {(message.attachment.size / 1024).toFixed(1)} KB
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  // Image dialog for full-size view
+  const renderImageDialog = () => {
+    if (!message.attachment?.type.startsWith("image/")) return null;
+
+    return (
+      <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="flex items-center justify-between">
+              <span>{message.attachment.name}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-center p-4">
+            <img
+              src={message.attachment.url}
+              alt={message.attachment.name}
+              className="max-w-full max-h-[70vh] object-contain rounded-lg"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   // System message (centered, no bubble)
   if (message.type === "system") {
     // Check if this system message is from the current user
@@ -165,51 +265,11 @@ export function MessageBubble({
         >
           <div className="max-w-[80%]">
             <div className="rounded-2xl bg-secondary px-4 py-2.5">
-              {/* Attachment (if exists) */}
               {message.attachment && (
                 <div className={message.content ? "mb-2" : ""}>
-                  {message.attachment.type.startsWith("image/") ? (
-                    <TooltipProvider>
-                      <div className="relative group cursor-pointer">
-                        <img
-                          src={message.attachment.url}
-                          alt={message.attachment.name}
-                          className="rounded-lg max-w-full h-auto max-h-[200px] object-cover"
-                          onClick={() => setShowImageDialog(true)}
-                        />
-                        {/* Hover overlay */}
-                        <div
-                          className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg flex items-end justify-start cursor-pointer"
-                          onClick={() => setShowImageDialog(true)}
-                        >
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="p-2">
-                                <Eye className="h-5 w-5 text-white" />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>View image</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </TooltipProvider>
-                  ) : (
-                    <div className="flex items-center gap-2 p-2 rounded bg-background/50">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-body-sm truncate">
-                          {message.attachment.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {(message.attachment.size / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                  {renderAttachment()}
                 </div>
               )}
-              {/* Message text (if exists) */}
               {message.content && (
                 <p className="text-body-sm">{message.content}</p>
               )}
@@ -220,31 +280,12 @@ export function MessageBubble({
             </div>
           </div>
         </motion.div>
-
-        {/* Image dialog for full-size view */}
-        {message.attachment?.type.startsWith("image/") && (
-          <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
-            <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-              <DialogHeader className="p-4 pb-0">
-                <DialogTitle className="flex items-center justify-between">
-                  <span>{message.attachment.name}</span>
-                </DialogTitle>
-              </DialogHeader>
-              <div className="flex items-center justify-center p-4">
-                <img
-                  src={message.attachment.url}
-                  alt={message.attachment.name}
-                  className="max-w-full max-h-[70vh] object-contain rounded-lg"
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+        {renderImageDialog()}
       </>
     );
   }
 
-  // AI message (alignment depends on view)
+  // AI message (alignment depends on view) - WITH MARKDOWN RENDERING
   if (message.type === "ai") {
     return (
       <>
@@ -262,52 +303,18 @@ export function MessageBubble({
               </span>
             </div>
             <div className="rounded-2xl bg-primary/5 px-4 py-2.5 max-w-max">
-              {/* Attachment (if exists) */}
               {message.attachment && (
-                <div className="mb-2">
-                  {message.attachment.type.startsWith("image/") ? (
-                    <TooltipProvider>
-                      <div className="relative group cursor-pointer">
-                        <img
-                          src={message.attachment.url}
-                          alt={message.attachment.name}
-                          className="rounded-lg max-w-full h-auto max-h-[200px] object-cover"
-                        />
-                        {/* Hover overlay */}
-                        <div
-                          onClick={() => setShowImageDialog(true)}
-                          className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg flex items-end justify-start cursor-pointer"
-                        >
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="p-2">
-                                <Eye className="h-5 w-5 text-white" />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>View image</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </TooltipProvider>
-                  ) : (
-                    <div className="flex items-center gap-2 p-2 rounded bg-background/50">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-body-sm truncate">
-                          {message.attachment.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {(message.attachment.size / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <div className="mb-2">{renderAttachment()}</div>
               )}
-              {/* Message text (if exists) */}
               {message.content && (
-                <p className="text-body-sm">{message.content}</p>
+                <div className="text-body-sm prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
               )}
             </div>
             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
@@ -316,26 +323,7 @@ export function MessageBubble({
             </div>
           </div>
         </motion.div>
-
-        {/* Image dialog for full-size view */}
-        {message.attachment?.type.startsWith("image/") && (
-          <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
-            <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-              <DialogHeader className="p-4 pb-0">
-                <DialogTitle className="flex items-center justify-between">
-                  <span>{message.attachment.name}</span>
-                </DialogTitle>
-              </DialogHeader>
-              <div className="flex items-center justify-center p-4">
-                <img
-                  src={message.attachment.url}
-                  alt={message.attachment.name}
-                  className="max-w-full max-h-[70vh] object-contain rounded-lg"
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+        {renderImageDialog()}
       </>
     );
   }
@@ -373,50 +361,9 @@ export function MessageBubble({
               </span>
             </div>
             <div className="rounded-2xl bg-card border border-border px-4 py-2.5 max-w-max">
-              {/* Attachment (if exists) */}
               {message.attachment && (
-                <div className="mb-2">
-                  {message.attachment.type.startsWith("image/") ? (
-                    <TooltipProvider>
-                      <div className="relative group cursor-pointer">
-                        <img
-                          src={message.attachment.url}
-                          alt={message.attachment.name}
-                          className="rounded-lg max-w-full h-auto max-h-[200px] object-cover"
-                        />
-                        {/* Hover overlay */}
-                        <div
-                          onClick={() => setShowImageDialog(true)}
-                          className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg flex items-end justify-start cursor-pointer"
-                        >
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="p-2">
-                                <Eye className="h-5 w-5 text-white" />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>View image</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </TooltipProvider>
-                  ) : (
-                    <div className="flex items-center gap-2 p-2 rounded bg-background/50">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-body-sm truncate">
-                          {message.attachment.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {(message.attachment.size / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <div className="mb-2">{renderAttachment()}</div>
               )}
-              {/* Message text (if exists) */}
               {message.content && (
                 <p className="text-body-sm">{message.content}</p>
               )}
@@ -427,26 +374,7 @@ export function MessageBubble({
             </div>
           </div>
         </motion.div>
-
-        {/* Image dialog for full-size view */}
-        {message.attachment?.type.startsWith("image/") && (
-          <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
-            <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-              <DialogHeader className="p-4 pb-0">
-                <DialogTitle className="flex items-center justify-between">
-                  <span>{message.attachment.name}</span>
-                </DialogTitle>
-              </DialogHeader>
-              <div className="flex items-center justify-center p-4">
-                <img
-                  src={message.attachment.url}
-                  alt={message.attachment.name}
-                  className="max-w-full max-h-[70vh] object-contain rounded-lg"
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+        {renderImageDialog()}
       </>
     );
   }

@@ -1,12 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { X, Plus } from "lucide-react";
 import { AIConfig } from "./ai-studio-view";
+import { MessageSquare, CreditCard } from "lucide-react";
 
 interface HandoffTriggersSectionProps {
   triggers: AIConfig["handoffTriggers"];
@@ -19,70 +15,52 @@ const commonTriggers = [
   {
     id: "customerRequestsHuman" as const,
     label: "Customer requests human help",
-    description: 'Phrases: "speak to a human", "real person", "agent"',
+    description: 'When customers ask to speak with a human, real person, or agent',
+    icon: MessageSquare,
   },
   {
     id: "billingQuestions" as const,
     label: "Billing & payment questions",
-    description: "Auto-escalates billing-related conversations",
-  },
-  {
-    id: "negativeSentiment" as const,
-    label: "Negative sentiment detected",
-    description: "When customer expresses frustration or anger",
-  },
-  {
-    id: "multipleFailedAttempts" as const,
-    label: "Multiple failed attempts",
-    description: "AI couldn't help after 3+ responses",
+    description: "Auto-escalates billing, refund, and payment-related conversations",
+    icon: CreditCard,
   },
 ];
 
 export function HandoffTriggersSection({
   triggers,
-  customTriggers,
   onTriggersChange,
-  onCustomTriggersChange,
 }: HandoffTriggersSectionProps) {
-  const [newTrigger, setNewTrigger] = useState("");
-
-  const handleAddTrigger = () => {
-    if (newTrigger.trim() && !customTriggers.includes(newTrigger.trim())) {
-      onCustomTriggersChange([...customTriggers, newTrigger.trim()]);
-      setNewTrigger("");
-    }
-  };
-
-  const handleRemoveTrigger = (trigger: string) => {
-    onCustomTriggersChange(customTriggers.filter((t) => t !== trigger));
-  };
-
   return (
     <div>
       {/* Section Header */}
       <div className="mb-6">
-        <h2 className="text-h3 font-semibold text-foreground">
+        <h2 className="text-lg font-semibold text-foreground">
           Handoff Triggers
         </h2>
-        <p className="text-muted-foreground mt-1">
-          When should the AI hand off to human support?
+        <p className="text-sm text-muted-foreground mt-1">
+          Configure when the AI should hand off conversations to human support
         </p>
       </div>
 
-      {/* Content */}
-      <div className="space-y-6">
-        {/* Common Triggers */}
-        <div className="space-y-4">
-          {commonTriggers.map((trigger) => (
+      {/* Triggers */}
+      <div className="space-y-3">
+        {commonTriggers.map((trigger) => {
+          const Icon = trigger.icon;
+          return (
             <div
               key={trigger.id}
-              className="flex items-start justify-between gap-4 py-2"
+              className="flex items-center justify-between gap-4 p-4 rounded-xl border border-border bg-card hover:bg-secondary/30 transition-colors"
             >
-              <div className="flex-1">
-                <p className="text-foreground">{trigger.label}</p>
-                <p className="text-muted-foreground mt-0.5">
-                  {trigger.description}
-                </p>
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Icon className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">{trigger.label}</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {trigger.description}
+                  </p>
+                </div>
               </div>
               <Switch
                 checked={triggers[trigger.id]}
@@ -91,57 +69,17 @@ export function HandoffTriggersSection({
                 }
               />
             </div>
-          ))}
-        </div>
+          );
+        })}
+      </div>
 
-        {/* Custom Triggers */}
-        <div className="space-y-3">
-          <Label className="text-label text-foreground">Custom Triggers</Label>
-
-          {/* Add New Trigger */}
-          <div className="flex items-center gap-2">
-            <Input
-              value={newTrigger}
-              onChange={(e) => setNewTrigger(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddTrigger();
-                }
-              }}
-              placeholder="Enter custom trigger phrase..."
-              className="flex-1"
-            />
-            <Button
-              onClick={handleAddTrigger}
-              disabled={!newTrigger.trim()}
-              size="sm"
-              variant="outline"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Custom Triggers List */}
-          {customTriggers.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3">
-              {customTriggers.map((trigger) => (
-                <div
-                  key={trigger}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-secondary text-foreground rounded-md"
-                >
-                  <span>{trigger}</span>
-                  <button
-                    onClick={() => handleRemoveTrigger(trigger)}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Info Note */}
+      <div className="mt-6 p-4 rounded-lg bg-secondary/50 border border-border">
+        <p className="text-sm text-muted-foreground">
+          <strong className="text-foreground">Tip:</strong> When a handoff is triggered,
+          customers will be notified that a human agent will assist them shortly.
+          The conversation will appear in your support queue.
+        </p>
       </div>
     </div>
   );

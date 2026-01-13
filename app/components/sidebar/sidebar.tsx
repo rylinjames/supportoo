@@ -19,6 +19,8 @@ import {
   Building2,
   ArrowRightLeft,
   Activity,
+  FileText,
+  Users,
 } from "lucide-react";
 import { Separator } from "../../../components/ui/separator";
 import { SidebarItem } from "./sidebar-item";
@@ -175,6 +177,17 @@ export function Sidebar({ userType, user }: SidebarProps) {
       ],
     };
 
+    // Workspace - expandable section with Templates and Team
+    const workspaceSection: NavSection = {
+      id: "workspace",
+      label: "Workspace",
+      defaultExpanded: false,
+      items: [
+        { id: "templates", icon: FileText, label: "Templates", route: "/workspace" },
+        { id: "team", icon: Users, label: "Team", route: "/workspace?tab=team" },
+      ],
+    };
+
     // Analytics - expandable section
     const analyticsSection: NavSection = {
       id: "analytics",
@@ -189,11 +202,11 @@ export function Sidebar({ userType, user }: SidebarProps) {
     // Role-based navigation
     // Note: Billing, Settings, Help, More Apps moved to profile dropdown
     if (effectiveUserType === "admin") {
-      return [supportTicketsSection, aiStudioSection, customerTestSection, analyticsSection];
+      return [supportTicketsSection, aiStudioSection, customerTestSection, workspaceSection, analyticsSection];
     }
 
     if (effectiveUserType === "manager") {
-      return [supportTicketsSection, aiStudioSection, customerTestSection, analyticsSection];
+      return [supportTicketsSection, aiStudioSection, customerTestSection, workspaceSection, analyticsSection];
     }
 
     if (effectiveUserType === "viewer") {

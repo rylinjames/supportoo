@@ -7,7 +7,8 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, Edit, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Search, Edit, Trash2, MessageSquare, ChevronDown, Hand, CheckCircle, Sparkles, MessagesSquare } from "lucide-react";
 import { TemplateModal } from "./template-modal";
 import { toast } from "sonner";
 import {
@@ -20,7 +21,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useUser } from "@/app/contexts/user-context";
+import { cn } from "@/lib/utils";
+import { LucideIcon } from "lucide-react";
 
 type TemplateCategory = "greeting" | "escalation" | "resolution" | "general";
 
@@ -33,11 +41,11 @@ interface Template {
   updatedAt: number;
 }
 
-const TEMPLATE_CATEGORIES = [
-  { value: "greeting" as const, label: "Greeting" },
-  { value: "escalation" as const, label: "Escalation" },
-  { value: "resolution" as const, label: "Resolution" },
-  { value: "general" as const, label: "General" },
+const TEMPLATE_CATEGORIES: { value: TemplateCategory; label: string; icon: LucideIcon }[] = [
+  { value: "greeting", label: "Greeting", icon: Hand },
+  { value: "escalation", label: "Escalation", icon: MessagesSquare },
+  { value: "resolution", label: "Resolution", icon: CheckCircle },
+  { value: "general", label: "General", icon: Sparkles },
 ];
 
 interface TemplatesTabProps {
@@ -50,9 +58,7 @@ export function TemplatesTab({ companyId }: TemplatesTabProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [templateToDelete, setTemplateToDelete] = useState<Template | null>(
-    null
-  );
+  const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
 
   // Fetch templates
   const templates = useQuery(api.templates.queries.listTemplatesByCompany, {
@@ -170,7 +176,7 @@ export function TemplatesTab({ companyId }: TemplatesTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* Top Actions */}
+      {/* Header with Search and Action */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -194,98 +200,112 @@ export function TemplatesTab({ companyId }: TemplatesTabProps) {
 
       {/* Loading State */}
       {isLoading ? (
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-32" /> {/* Category header */}
-            <Skeleton className="h-24 w-full" /> {/* Template card */}
-            <Skeleton className="h-24 w-full" />
+        <div className="space-y-4">
+          <div className="p-3 rounded-lg bg-secondary/50">
+            <Skeleton className="h-5 w-32" />
           </div>
           <div className="space-y-2">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
           </div>
         </div>
       ) : groupedTemplates.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground mb-4">
+        /* Empty State */
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="p-4 rounded-full bg-secondary mb-4">
+            <MessageSquare className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-2">
             {searchQuery ? "No templates found" : "No templates yet"}
+          </h3>
+          <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+            {searchQuery
+              ? "Try adjusting your search query"
+              : "Create quick reply templates to speed up your support responses"}
           </p>
           {searchQuery ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSearchQuery("")}
-            >
+            <Button variant="ghost" size="sm" onClick={() => setSearchQuery("")}>
               Clear search
             </Button>
           ) : (
             <Button onClick={() => setIsModalOpen(true)} size="sm">
-              Create Template
+              <Plus className="h-4 w-4 mr-2" />
+              Create First Template
             </Button>
           )}
         </div>
       ) : (
-        <div className="space-y-8">
-          {groupedTemplates.map((group) => (
-            <div key={group.value}>
-              {/* Category Header */}
-              <h3 className="text-muted-foreground mb-3">
-                {group.label} ({group.templates.length})
-              </h3>
-
-              {/* Template Cards */}
-              <div className="space-y-2">
-                {group.templates.map((template: any) => {
-                  const variables = extractVariables(template.content);
-                  return (
-                    <div
-                      key={template._id}
-                      className="p-4 bg-secondary rounded-md border border-border hover:border-primary/50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-foreground mb-1">
-                            {template.title}
-                          </h4>
-                          <p className="text-muted-foreground truncate">
-                            {template.content}
-                          </p>
-                          {variables.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-2">
-                              {variables.map((variable, idx) => (
-                                <span
-                                  key={idx}
-                                  className="inline-block px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs font-mono"
-                                >
-                                  {variable}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditModal(template)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openDeleteDialog(template)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+        /* Template Categories */
+        <div className="space-y-4">
+          {groupedTemplates.map((group) => {
+            const Icon = group.icon;
+            return (
+              <Collapsible key={group.value} defaultOpen={true}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors group">
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium text-foreground">{group.label}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {group.templates.length}
+                    </Badge>
+                  </div>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-2 space-y-2">
+                  {group.templates.map((template: any) => {
+                    const variables = extractVariables(template.content);
+                    return (
+                      <div
+                        key={template._id}
+                        className="group/card p-4 rounded-lg border border-border bg-card hover:border-primary/50 hover:shadow-md transition-all"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-foreground truncate">
+                              {template.title}
+                            </h4>
+                            <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                              {template.content}
+                            </p>
+                            {variables.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-3">
+                                {variables.map((variable, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-mono"
+                                  >
+                                    {variable}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openEditModal(template)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => openDeleteDialog(template)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+                    );
+                  })}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
         </div>
       )}
 

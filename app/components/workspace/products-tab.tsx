@@ -4,26 +4,24 @@ import { useState } from "react";
 import { useQuery, useAction } from "convex/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RefreshCw, Package, DollarSign, Clock, CheckCircle, AlertCircle, EyeOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { RefreshCw, Package, Clock, CheckCircle, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { cn } from "@/lib/utils";
 
 interface ProductsTabProps {
   companyId: Id<"companies">;
 }
 
 export function ProductsTab({ companyId }: ProductsTabProps) {
-  const { userData, userToken } = useUser();
+  const { userToken } = useUser();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncingPlans, setIsSyncingPlans] = useState(false);
-  const [lastSyncResult, setLastSyncResult] = useState<any>(null);
   const [showHiddenProducts, setShowHiddenProducts] = useState(false);
 
   // Query products with filter based on toggle state
@@ -62,41 +60,22 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     ? allProducts.filter(p => !p.isVisible || !p.isActive).length
     : 0;
 
+  // Get last sync time from most recently synced product
+  const lastSyncTime = products?.length
+    ? Math.max(...products.map((p: any) => p.lastSyncedAt))
+    : null;
+
   // Actions
   const syncProducts = useAction(api.products.actions.syncProducts);
   const syncPlans = useAction(api.whopPlans.actions.syncPlans);
-  const testConnection = useAction(api.products.actions.testWhopConnection);
 
   const handleSyncProducts = async () => {
     if (isSyncing) return;
 
     setIsSyncing(true);
 
-    // Log sync details for debugging multi-tenancy
-    console.log("========================================");
-    console.log("🔄 PRODUCT SYNC INITIATED FROM UI");
-    console.log("----------------------------------------");
-    console.log("Company ID:", companyId);
-    console.log("Has User Token:", !!userToken);
-    console.log("Token Preview:", userToken ? `${userToken.substring(0, 20)}...` : "NONE");
-    console.log("----------------------------------------");
-
     try {
-      // Pass the user token for proper multi-tenant product fetching
       const result = await syncProducts({ companyId, userToken });
-      
-      setLastSyncResult(result);
-
-      // Log sync results for debugging
-      console.log("----------------------------------------");
-      console.log("📦 SYNC RESULTS:");
-      console.log("Success:", result.success);
-      console.log("Products Synced:", result.syncedCount);
-      console.log("Products Deleted:", result.deletedCount);
-      if (result.errors?.length > 0) {
-        console.log("Errors:", result.errors);
-      }
-      console.log("========================================");
 
       if (result.success) {
         toast.success(
@@ -105,7 +84,6 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
         );
 
         // Also sync plans after products
-        console.log("🔄 Now syncing pricing plans...");
         setIsSyncingPlans(true);
         try {
           const planResult = await syncPlans({ companyId });
@@ -125,29 +103,9 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
       }
     } catch (error) {
       console.error("Sync failed:", error);
-      console.log("========================================");
       toast.error(`Sync failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setIsSyncing(false);
-    }
-  };
-
-  const handleTestConnection = async () => {
-    try {
-      // Pass the user token for proper multi-tenant product fetching
-      const result = await testConnection({ companyId, userToken });
-
-      if (result.success) {
-        toast.success(result.message);
-        // Log sample products to console for debugging
-        console.log("[testConnection] Sample products:", result.sampleProducts);
-        console.log("[testConnection] Token type used:", result.tokenType);
-        console.log("[testConnection] Company ID:", result.companyId);
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error(`Connection test failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   };
 
@@ -155,275 +113,228 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(price / 100);
   };
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  const formatRelativeTime = (timestamp: number) => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
   };
 
   const getProductTypeColor = (type: string) => {
-    const colors = {
-      membership: "bg-blue-100 text-blue-800",
-      digital_product: "bg-green-100 text-green-800", 
-      course: "bg-purple-100 text-purple-800",
-      community: "bg-yellow-100 text-yellow-800",
-      software: "bg-gray-100 text-gray-800",
-      other: "bg-slate-100 text-slate-800",
+    const colors: Record<string, string> = {
+      membership: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+      digital_product: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+      course: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+      community: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+      software: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
+      other: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300",
     };
-    return colors[type as keyof typeof colors] || colors.other;
+    return colors[type] || colors.other;
   };
 
-  const getSyncStatusColor = (status: string) => {
-    const colors = {
-      synced: "text-green-600",
-      error: "text-red-600",
-      outdated: "text-yellow-600",
-    };
-    return colors[status as keyof typeof colors] || colors.outdated;
-  };
+  const isLoading = products === undefined;
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h2 className="text-h3 text-foreground">Products & Services</h2>
-        <p className="text-muted-foreground mt-1">
-          Sync your Whop products so the AI can help customers with product information
-        </p>
-      </div>
-
+    <div className="space-y-6">
       {/* Sync Controls */}
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Product Sync
-            </CardTitle>
-            <CardDescription>
-              Automatically fetch your latest products from Whop to keep the AI up-to-date
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={handleSyncProducts}
-                disabled={isSyncing || isSyncingPlans}
-                className="flex items-center gap-2"
-              >
-                <RefreshCw className={`h-4 w-4 ${isSyncing || isSyncingPlans ? 'animate-spin' : ''}`} />
-                {isSyncing ? "Syncing Products..." : isSyncingPlans ? "Syncing Plans..." : "Sync Products & Plans"}
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                onClick={handleTestConnection}
-                className="flex items-center gap-2"
-              >
-                <CheckCircle className="h-4 w-4" />
-                Test Connection
-              </Button>
-            </div>
-
-            {lastSyncResult && (
-              <Alert className={lastSyncResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
-                <AlertCircle className={`h-4 w-4 ${lastSyncResult.success ? "text-green-600" : "text-red-600"}`} />
-                <AlertDescription className={lastSyncResult.success ? "text-green-800" : "text-red-800"}>
-                  {lastSyncResult.success ? (
-                    `Last sync: ${lastSyncResult.syncedCount} products synced` +
-                    (lastSyncResult.deletedCount > 0 ? `, ${lastSyncResult.deletedCount} removed` : "")
-                  ) : (
-                    `Sync failed: ${lastSyncResult.errors?.[0] || "Unknown error"}`
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-background">
+            <RefreshCw className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <p className="font-medium text-foreground">Product Sync</p>
+            <p className="text-sm text-muted-foreground">
+              {lastSyncTime
+                ? `Last synced ${formatRelativeTime(lastSyncTime)}`
+                : "Never synced"}
+            </p>
+          </div>
+        </div>
+        <Button onClick={handleSyncProducts} disabled={isSyncing || isSyncingPlans} size="sm">
+          {isSyncing || isSyncingPlans ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              {isSyncing ? "Syncing..." : "Syncing Plans..."}
+            </>
+          ) : (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Sync Now
+            </>
+          )}
+        </Button>
       </div>
 
-      {/* Products List */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h3 className="text-h4 text-foreground">Current Products</h3>
+      {/* Header with filters */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              {products?.length || 0} products
+            </span>
+          </div>
+          {hiddenCount > 0 && (
             <div className="flex items-center gap-2">
               <Switch
                 id="show-hidden"
                 checked={showHiddenProducts}
                 onCheckedChange={setShowHiddenProducts}
               />
-              <Label htmlFor="show-hidden" className="text-sm text-muted-foreground cursor-pointer">
-                Show hidden/archived
+              <Label htmlFor="show-hidden" className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1">
+                <EyeOff className="h-3 w-3" />
+                Show {hiddenCount} hidden
               </Label>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="flex items-center gap-1">
-              <Package className="h-3 w-3" />
-              {products?.length || 0} visible
-            </Badge>
-            {hiddenCount > 0 && (
-              <Badge variant="outline" className="flex items-center gap-1 text-muted-foreground">
-                <EyeOff className="h-3 w-3" />
-                {hiddenCount} hidden
-              </Badge>
-            )}
-          </div>
+          )}
         </div>
-
-        {products === undefined ? (
-          // Loading state
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <Card key={i}>
-                <CardContent className="p-6">
-                  <div className="space-y-3">
-                    <Skeleton className="h-5 w-3/4" />
-                    <Skeleton className="h-4 w-full" />
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-6 w-20" />
-                      <Skeleton className="h-6 w-16" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : products.length === 0 ? (
-          // Empty state
-          <Card>
-            <CardContent className="p-12 text-center">
-              <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-h4 text-foreground mb-2">No Products Found</h3>
-              <p className="text-muted-foreground mb-4">
-                Sync your products from Whop to get started. The AI will use this information to help customers.
-              </p>
-              <Button onClick={handleSyncProducts} disabled={isSyncing}>
-                {isSyncing ? "Syncing..." : "Sync Products Now"}
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          // Products grid
-          <div className="space-y-4">
-            {products.map((product: any) => (
-              <Card key={product._id}>
-                <CardContent className="p-6">
-                  <div className="space-y-4">
-                    {/* Header */}
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <h4 className="text-h5 text-foreground">{product.title}</h4>
-                        {product.description && (
-                          <p className="text-muted-foreground text-sm line-clamp-2">
-                            {product.description}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge className={getSyncStatusColor(product.syncStatus)}>
-                          {product.syncStatus}
-                        </Badge>
-                        {!product.isVisible && (
-                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                            Hidden
-                          </Badge>
-                        )}
-                        {!product.isActive && (
-                          <Badge variant="secondary">Inactive</Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Pricing Plans */}
-                    {plansByProduct[product.whopProductId]?.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="text-sm font-medium text-foreground flex items-center gap-1">
-                          <DollarSign className="h-4 w-4" />
-                          Pricing Options:
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                          {plansByProduct[product.whopProductId].map((plan: any) => (
-                            <Badge
-                              key={plan._id}
-                              variant="outline"
-                              className="text-sm py-1 px-2"
-                            >
-                              {plan.title}:{" "}
-                              {plan.initialPrice
-                                ? formatPrice(plan.initialPrice, plan.currency)
-                                : "Free"}
-                              {plan.planType === "renewal" && plan.billingPeriod && (
-                                <span className="text-muted-foreground ml-1">
-                                  /{plan.billingPeriod === 30 || plan.billingPeriod === 31
-                                    ? "mo"
-                                    : plan.billingPeriod === 365 || plan.billingPeriod === 366
-                                    ? "yr"
-                                    : plan.billingPeriod === 7
-                                    ? "wk"
-                                    : `${plan.billingPeriod}d`}
-                                </span>
-                              )}
-                              {plan.planType === "one_time" && (
-                                <span className="text-muted-foreground ml-1">(one-time)</span>
-                              )}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Details */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Badge className={getProductTypeColor(product.productType)} variant="secondary">
-                          {product.productType.replace('_', ' ')}
-                        </Badge>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="capitalize">{product.accessType.replace('_', ' ')}</span>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Clock className="h-4 w-4" />
-                        <span>{formatDate(product.lastSyncedAt)}</span>
-                      </div>
-                    </div>
-
-                    {/* Features */}
-                    {product.features && product.features.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="text-sm font-medium text-foreground">Features:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {product.features.slice(0, 3).map((feature: string, index: number) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {feature}
-                            </Badge>
-                          ))}
-                          {product.features.length > 3 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{product.features.length - 3} more
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
       </div>
+
+      {/* Loading State */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="p-4 rounded-lg border border-border bg-card">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+                <Skeleton className="h-5 w-16" />
+              </div>
+              <div className="flex gap-2 mb-3">
+                <Skeleton className="h-6 w-16" />
+                <Skeleton className="h-6 w-20" />
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-border">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : products.length === 0 ? (
+        /* Empty State */
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="p-6 rounded-full bg-secondary/50 mb-6">
+            <Package className="h-12 w-12 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-2">No products synced</h3>
+          <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+            Sync your Whop products so the AI can help customers with accurate product information
+          </p>
+          <Button onClick={handleSyncProducts} disabled={isSyncing} size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Sync Products Now
+          </Button>
+        </div>
+      ) : (
+        /* Products Grid */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {products.map((product: any) => {
+            const productPlans = plansByProduct[product.whopProductId] || [];
+
+            return (
+              <div
+                key={product._id}
+                className={cn(
+                  "p-4 rounded-lg border border-border bg-card",
+                  (!product.isVisible || !product.isActive) && "opacity-60"
+                )}
+              >
+                {/* Header row */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-foreground truncate">{product.title}</h4>
+                    {product.description && (
+                      <p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
+                        {product.description}
+                      </p>
+                    )}
+                  </div>
+                  <Badge className={cn("text-xs shrink-0", getProductTypeColor(product.productType))}>
+                    {product.productType.replace('_', ' ')}
+                  </Badge>
+                </div>
+
+                {/* Pricing chips */}
+                {productPlans.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {productPlans.slice(0, 3).map((plan: any) => (
+                      <span
+                        key={plan._id}
+                        className="px-2 py-1 rounded-md bg-secondary text-xs"
+                      >
+                        {plan.initialPrice
+                          ? formatPrice(plan.initialPrice, plan.currency)
+                          : "Free"}
+                        {plan.planType === "renewal" && plan.billingPeriod && (
+                          <span className="text-muted-foreground">
+                            /{plan.billingPeriod === 30 || plan.billingPeriod === 31
+                              ? "mo"
+                              : plan.billingPeriod === 365 || plan.billingPeriod === 366
+                              ? "yr"
+                              : plan.billingPeriod === 7
+                              ? "wk"
+                              : `${plan.billingPeriod}d`}
+                          </span>
+                        )}
+                        {plan.planType === "one_time" && (
+                          <span className="text-muted-foreground"> once</span>
+                        )}
+                      </span>
+                    ))}
+                    {productPlans.length > 3 && (
+                      <span className="px-2 py-1 rounded-md bg-secondary text-xs text-muted-foreground">
+                        +{productPlans.length - 3} more
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Footer */}
+                <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Synced {formatRelativeTime(product.lastSyncedAt)}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {!product.isVisible && (
+                      <Badge variant="outline" className="text-xs py-0 px-1.5 text-orange-600 border-orange-300">
+                        Hidden
+                      </Badge>
+                    )}
+                    {!product.isActive && (
+                      <Badge variant="secondary" className="text-xs py-0 px-1.5">
+                        Inactive
+                      </Badge>
+                    )}
+                    <span className={cn(
+                      "flex items-center gap-1",
+                      product.syncStatus === "synced" ? "text-green-600" : "text-yellow-600"
+                    )}>
+                      <div className="w-1.5 h-1.5 rounded-full bg-current" />
+                      {product.syncStatus}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

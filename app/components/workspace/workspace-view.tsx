@@ -10,12 +10,21 @@ import { CompanyContextTab } from "@/app/components/workspace/company-context-ta
 import { TemplatesTab } from "./templates-tab";
 import { TeamTab } from "./team-tab";
 import { ProductsTab } from "./products-tab";
+import { Briefcase } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+type TabId = "context" | "templates" | "team" | "products";
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: "context", label: "Company Context" },
+  { id: "templates", label: "Templates" },
+  { id: "team", label: "Team" },
+  { id: "products", label: "Products" },
+];
 
 export function WorkspaceView() {
   const { userData } = useUser();
-  const [activeTab, setActiveTab] = useState<"context" | "templates" | "team" | "products">(
-    "context"
-  );
+  const [activeTab, setActiveTab] = useState<TabId>("context");
   const [isLoading, setIsLoading] = useState(true);
 
   // Query fullConfig to determine when data is ready
@@ -37,87 +46,67 @@ export function WorkspaceView() {
 
   return (
     <div className="h-full overflow-y-auto pb-20 lg:pb-0 text-body-sm">
-      {/* Page Header - Clean & Flat */}
-      <div className="sticky top-0 z-10 bg-background">
-        <div className="p-4">
-          <h1 className="text-h2 text-foreground">Workspace</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage company information and quick reply templates
-          </p>
+      {/* Page Header with Frosted Glass */}
+      <div className="sticky top-0 z-10 frosted-glass border-b border-border">
+        <div className="p-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Briefcase className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-h2 text-foreground">Workspace</h1>
+              <p className="text-body-sm text-muted-foreground">
+                Configure your AI assistant with company knowledge
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* Tabs Navigation - Full width border */}
-        <div className="border-b border-border px-4">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setActiveTab("context")}
-              className={`px-3 py-2 transition-colors relative ${
-                activeTab === "context"
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Company Context
-              {activeTab === "context" && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("templates")}
-              className={`px-3 py-2 transition-colors relative ${
-                activeTab === "templates"
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Templates
-              {activeTab === "templates" && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("team")}
-              className={`px-3 py-2 transition-colors relative ${
-                activeTab === "team"
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Team
-              {activeTab === "team" && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("products")}
-              className={`px-3 py-2 transition-colors relative ${
-                activeTab === "products"
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Products
-              {activeTab === "products" && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-              )}
-            </button>
+        {/* Pill-style Tabs */}
+        <div className="px-6 pb-4">
+          <div className="inline-flex p-1 rounded-lg bg-secondary gap-1">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "px-4 py-2 rounded-md text-sm font-medium transition-all",
+                  activeTab === tab.id
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
       {/* Tab Content */}
-      <div className="p-4">
+      <div className="p-6">
         {isLoading ? (
-          <div className="space-y-12">
-            <div className="space-y-6">
-              <Skeleton className="h-5 w-48" />
-              <Skeleton className="h-4 w-96" />
-              <Skeleton className="h-32 w-full" />
+          <div className="space-y-8">
+            {/* Header skeleton */}
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-80" />
             </div>
-            <div className="space-y-6">
-              <Skeleton className="h-5 w-48" />
-              <Skeleton className="h-4 w-96" />
-              <Skeleton className="h-40 w-full" />
+            {/* Content skeleton */}
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-3 bg-secondary/50 border-b border-border">
+                <Skeleton className="h-4 w-32" />
+              </div>
+              <div className="p-4 space-y-3">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-5/6" />
+              </div>
+            </div>
+            {/* Form skeleton */}
+            <div className="space-y-4">
+              <Skeleton className="h-10 w-48" />
+              <Skeleton className="h-48 w-full rounded-lg" />
             </div>
           </div>
         ) : activeTab === "context" ? (

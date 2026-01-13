@@ -7,9 +7,10 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
+import { FileText, Plus, Edit3 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface CompanyContextTabProps {
   fullConfig: any; // Type from getFullCompanyConfig query
@@ -19,8 +20,6 @@ export function CompanyContextTab({ fullConfig }: CompanyContextTabProps) {
   const { userData } = useUser();
   const [updateMode, setUpdateMode] = useState<"text" | "edit">("text");
   const [newContent, setNewContent] = useState("");
-
-  // fullConfig is now passed as a prop
 
   // Initialize with existing content when switching to edit mode
   useEffect(() => {
@@ -37,17 +36,16 @@ export function CompanyContextTab({ fullConfig }: CompanyContextTabProps) {
   const handleSave = async () => {
     if (!userData?.currentCompanyId) return;
 
-    const contentToSave = newContent; // Always use newContent now
+    const contentToSave = newContent;
 
     try {
       await updateContext({
         companyId: userData.currentCompanyId as Id<"companies">,
         text: contentToSave,
-        shouldCondense: false, // No condensing for now
+        shouldCondense: false,
       });
 
       toast.success("Company context updated");
-      // Reset state
       setNewContent("");
     } catch (error) {
       console.error("Error saving context:", error);
@@ -83,30 +81,33 @@ export function CompanyContextTab({ fullConfig }: CompanyContextTabProps) {
   }
 
   return (
-    <div className="space-y-12">
-      {/* Current Context */}
+    <div className="space-y-8">
+      {/* Current Context Display */}
       {fullConfig.companyContextOriginal && (
-        <div>
-          <div className="mb-6">
-            <h2 className="text-h3 text-foreground">Current Context</h2>
-            <p className="text-muted-foreground mt-1">
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Current Context</h2>
+            <p className="text-sm text-muted-foreground">
               This information helps the AI understand your business
             </p>
           </div>
 
-          <div className="space-y-3">
-            {/* Metadata */}
-            <div className="flex items-center gap-4 text-muted-foreground">
-              <span>
-                Last updated: {formatDate(fullConfig.companyContextLastUpdated)}
-              </span>
-              <span>•</span>
-              <span>{wordCount(fullConfig.companyContextOriginal)} words</span>
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            {/* Header */}
+            <div className="px-4 py-3 bg-secondary/50 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground">Stored Context</span>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>{wordCount(fullConfig.companyContextOriginal)} words</span>
+                <span>•</span>
+                <span>Updated {formatDate(fullConfig.companyContextLastUpdated)}</span>
+              </div>
             </div>
-
-            {/* Content Display */}
-            <div className="bg-secondary rounded-md border border-border p-4">
-              <pre className="text-foreground whitespace-pre-wrap font-sans">
+            {/* Content */}
+            <div className="p-4 max-h-[300px] overflow-y-auto">
+              <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
                 {fullConfig.companyContextOriginal}
               </pre>
             </div>
@@ -114,116 +115,88 @@ export function CompanyContextTab({ fullConfig }: CompanyContextTabProps) {
         </div>
       )}
 
-      {/* Update Context */}
-      <div>
-        <div className="mb-6">
-          <h2 className="text-h3 text-foreground">Update Context</h2>
-          <p className="text-muted-foreground mt-1">
+      {/* Update Context Section */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Update Context</h2>
+          <p className="text-sm text-muted-foreground">
             Enter or edit text with company information
           </p>
         </div>
 
-        <div className="space-y-6">
-          {/* Mode Selection */}
-          <RadioGroup
-            value={updateMode}
-            onValueChange={(v) => setUpdateMode(v as "text" | "edit")}
+        {/* Segmented Control */}
+        <div className="inline-flex p-1 rounded-lg bg-secondary">
+          <button
+            onClick={() => setUpdateMode("text")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+              updateMode === "text"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
           >
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="text" id="text-mode" />
-              <Label
-                htmlFor="text-mode"
-                className="text-label text-foreground font-normal cursor-pointer"
-              >
-                Enter Text
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="edit" id="edit-mode" />
-              <Label
-                htmlFor="edit-mode"
-                className="text-label text-foreground font-normal cursor-pointer"
-              >
-                Edit Text
-              </Label>
-            </div>
-          </RadioGroup>
+            <Plus className="h-4 w-4" />
+            New Context
+          </button>
+          <button
+            onClick={() => setUpdateMode("edit")}
+            disabled={!fullConfig.companyContextOriginal}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+              updateMode === "edit"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+              !fullConfig.companyContextOriginal && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <Edit3 className="h-4 w-4" />
+            Edit Existing
+          </button>
+        </div>
 
-          {/* Text Entry */}
-          {updateMode === "text" && (
-            <div className="space-y-2">
-              <Label htmlFor="content" className="text-label text-foreground">
-                Company Information
-              </Label>
-              <Textarea
-                id="content"
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
-                rows={10}
-                className="font-mono"
-                placeholder={`Enter information about your company...
+        {/* Textarea with word count */}
+        <div className="space-y-2">
+          <Label htmlFor="content" className="text-sm font-medium text-foreground">
+            {updateMode === "text" ? "Company Information" : "Edit Company Information"}
+          </Label>
+          <div className="relative">
+            <Textarea
+              id="content"
+              value={newContent}
+              onChange={(e) => setNewContent(e.target.value)}
+              rows={12}
+              className="resize-none font-sans text-sm"
+              placeholder={`Describe your company, products, policies, FAQs...
 
 Include:
-• Products and services
-• Company policies
-• FAQs
-• Contact information`}
-              />
-              <div className="flex items-center justify-between">
-                <p className="text-muted-foreground">
-                  Include information about your products, services, policies,
-                  FAQs, etc.
-                </p>
-                <p className="text-muted-foreground">
-                  {wordCount(newContent)} words
-                </p>
-              </div>
+• Products and services you offer
+• Company policies and procedures
+• Frequently asked questions
+• Contact information and support hours`}
+            />
+            <div className="absolute bottom-3 right-3 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
+              {wordCount(newContent)} words
             </div>
-          )}
-
-          {/* Edit Existing Text */}
-          {updateMode === "edit" && fullConfig.companyContextOriginal && (
-            <div className="space-y-2">
-              <Label
-                htmlFor="edit-content"
-                className="text-label text-foreground"
-              >
-                Edit Company Information
-              </Label>
-              <Textarea
-                id="edit-content"
-                value={newContent || fullConfig.companyContextOriginal}
-                onChange={(e) => setNewContent(e.target.value)}
-                rows={10}
-                className="font-mono"
-              />
-              <div className="flex items-center justify-between">
-                <p className="text-muted-foreground">
-                  Edit and update your existing company context
-                </p>
-                <p className="text-muted-foreground">
-                  {wordCount(newContent || fullConfig.companyContextOriginal)}{" "}
-                  words
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          {((updateMode === "text" && newContent) ||
-            (updateMode === "edit" &&
-              newContent &&
-              newContent !== fullConfig.companyContextOriginal)) && (
-            <div className="flex items-center gap-2">
-              <Button onClick={handleSave} size="sm">
-                Save Context
-              </Button>
-              <Button onClick={handleCancel} variant="ghost" size="sm">
-                Cancel
-              </Button>
-            </div>
-          )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Include information about your products, services, policies, FAQs, etc.
+          </p>
         </div>
+
+        {/* Actions */}
+        {((updateMode === "text" && newContent) ||
+          (updateMode === "edit" &&
+            newContent &&
+            newContent !== fullConfig.companyContextOriginal)) && (
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSave} size="sm">
+              Save Context
+            </Button>
+            <Button onClick={handleCancel} variant="ghost" size="sm">
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

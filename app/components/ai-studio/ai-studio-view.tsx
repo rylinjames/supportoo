@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,10 @@ import { PersonalitySection } from "@/app/components/ai-studio/personality-secti
 import { SystemInstructionsSection } from "@/app/components/ai-studio/system-instructions-section";
 import { HandoffTriggersSection } from "@/app/components/ai-studio/handoff-triggers-section";
 import { TestAISection } from "@/app/components/ai-studio/test-ai-section";
+import { CompanyContextTab } from "@/app/components/workspace/company-context-tab";
+import { ProductsTab } from "@/app/components/workspace/products-tab";
 import { useUser } from "@/app/contexts/user-context";
+import { cn } from "@/lib/utils";
 
 export interface AIConfig {
   personality: "professional" | "friendly" | "casual" | "technical";
@@ -39,11 +43,28 @@ const defaultConfig: AIConfig = {
   customTriggers: [],
 };
 
+type TabType = "personality" | "context" | "handoff";
+
 export function AIStudioView() {
   const { userData } = useUser();
+  const searchParams = useSearchParams();
   const [config, setConfig] = useState<AIConfig>(defaultConfig);
   const [savedConfig, setSavedConfig] = useState<AIConfig>(defaultConfig);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Read tab from URL query params
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<TabType>(
+    tabParam === "context" ? "context" : tabParam === "handoff" ? "handoff" : "personality"
+  );
+
+  // Update tab when URL changes
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "context") setActiveTab("context");
+    else if (tab === "handoff") setActiveTab("handoff");
+    else setActiveTab("personality");
+  }, [searchParams]);
 
   // Fetch full company config
   const fullConfig = useQuery(
@@ -145,106 +166,143 @@ export function AIStudioView() {
 
   const isLoading = !fullConfig && userData?.currentCompanyId;
 
+  // Tab configuration
+  const tabs = [
+    { id: "personality" as const, label: "Personality & Tone" },
+    { id: "context" as const, label: "Company Context" },
+    { id: "handoff" as const, label: "Handoff Triggers" },
+  ];
+
   return (
     <div className="h-full overflow-y-auto pb-20 lg:pb-0 text-body-sm">
-      {/* Page Header - Clean & Flat */}
-      <div className="sticky top-0 z-10 bg-background p-4 border-b border-border">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-h2 font-semibold text-foreground">
-              AI Configuration
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Configure how your AI assistant responds to customers
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {hasUnsavedChanges && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleDiscard}
-                disabled={isSaving}
-              >
-                Discard
-              </Button>
+      {/* Page Header */}
+      <div className="sticky top-0 z-10 bg-background border-b border-border">
+        <div className="p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-h2 font-semibold text-foreground">
+                AI Studio
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                Configure how your AI assistant responds to customers
+              </p>
+            </div>
+            {/* Only show save/discard on personality and handoff tabs */}
+            {activeTab !== "context" && (
+              <div className="flex items-center gap-2">
+                {hasUnsavedChanges && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDiscard}
+                    disabled={isSaving}
+                  >
+                    Discard
+                  </Button>
+                )}
+                <Button
+                  onClick={handleSave}
+                  disabled={!hasUnsavedChanges || isSaving}
+                  size="sm"
+                >
+                  {isSaving ? "Saving..." : "Save"}
+                </Button>
+              </div>
             )}
-            <Button
-              onClick={handleSave}
-              disabled={!hasUnsavedChanges || isSaving}
-              size="sm"
-            >
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
           </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex border-t border-border">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "px-4 py-3 text-body-sm font-medium transition-colors relative",
+                "hover:text-foreground",
+                activeTab === tab.id
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              )}
+            >
+              {tab.label}
+              {activeTab === tab.id && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Main Content - Flat sections, no cards */}
+      {/* Main Content */}
       <div className="p-4">
-        <div className="space-y-12">
-          {isLoading ? (
-            <>
-              {/* Personality Section Skeleton */}
-              <div className="space-y-6">
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-4 w-96" />
-                <Skeleton className="h-32 w-full" />
+        {isLoading ? (
+          <div className="space-y-6">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-4 w-96" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+        ) : (
+          <>
+            {/* Personality & Tone Tab */}
+            {activeTab === "personality" && (
+              <div className="space-y-12">
+                <PersonalitySection
+                  personality={config.personality}
+                  responseLength={config.responseLength}
+                  onPersonalityChange={(personality) =>
+                    setConfig({ ...config, personality })
+                  }
+                  onResponseLengthChange={(responseLength) =>
+                    setConfig({ ...config, responseLength })
+                  }
+                />
+
+                <SystemInstructionsSection
+                  value={config.systemInstructions}
+                  onChange={(systemInstructions) =>
+                    setConfig({ ...config, systemInstructions })
+                  }
+                />
+
+                <TestAISection
+                  config={config}
+                  companyContext={fullConfig?.companyContextProcessed || ""}
+                  selectedAiModel={fullConfig?.selectedAiModel || "gpt-4o-mini"}
+                />
               </div>
+            )}
 
-              {/* Instructions Section Skeleton */}
-              <div className="space-y-6">
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-4 w-96" />
-                <Skeleton className="h-32 w-full" />
+            {/* Company Context Tab */}
+            {activeTab === "context" && (
+              <div className="space-y-12">
+                <CompanyContextTab fullConfig={fullConfig} />
+
+                {/* Products Section */}
+                {userData?.currentCompanyId && (
+                  <ProductsTab companyId={userData.currentCompanyId as Id<"companies">} />
+                )}
               </div>
+            )}
 
-              {/* Triggers Section Skeleton */}
-              <div className="space-y-6">
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-4 w-96" />
-                <Skeleton className="h-24 w-full" />
+            {/* Handoff Triggers Tab */}
+            {activeTab === "handoff" && (
+              <div className="space-y-12">
+                <HandoffTriggersSection
+                  triggers={config.handoffTriggers}
+                  customTriggers={config.customTriggers}
+                  onTriggersChange={(handoffTriggers) =>
+                    setConfig({ ...config, handoffTriggers })
+                  }
+                  onCustomTriggersChange={(customTriggers) =>
+                    setConfig({ ...config, customTriggers })
+                  }
+                />
               </div>
-            </>
-          ) : (
-            <>
-              <PersonalitySection
-                personality={config.personality}
-                responseLength={config.responseLength}
-                onPersonalityChange={(personality) =>
-                  setConfig({ ...config, personality })
-                }
-                onResponseLengthChange={(responseLength) =>
-                  setConfig({ ...config, responseLength })
-                }
-              />
-
-              <SystemInstructionsSection
-                value={config.systemInstructions}
-                onChange={(systemInstructions) =>
-                  setConfig({ ...config, systemInstructions })
-                }
-              />
-
-              <HandoffTriggersSection
-                triggers={config.handoffTriggers}
-                customTriggers={config.customTriggers}
-                onTriggersChange={(handoffTriggers) =>
-                  setConfig({ ...config, handoffTriggers })
-                }
-                onCustomTriggersChange={(customTriggers) =>
-                  setConfig({ ...config, customTriggers })
-                }
-              />
-
-              <TestAISection
-                config={config}
-                companyContext={fullConfig?.companyContextProcessed || ""}
-                selectedAiModel={fullConfig?.selectedAiModel || "gpt-4o-mini"}
-              />
-            </>
-          )}
-        </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

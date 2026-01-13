@@ -17,35 +17,116 @@ import { Id } from "../_generated/dataModel";
  *
  * This returns the actual store/brand name (e.g., "BooKoo Apps") rather than
  * the experience/app installation name (e.g., "support ai chat test").
+ *
+ * Uses retry logic and multiple API endpoints for reliability.
  */
 async function fetchWhopBusinessName(whopCompanyId: string): Promise<string | null> {
   const apiKey = process.env.WHOP_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.log(`[fetchWhopBusinessName] Missing WHOP_API_KEY`);
+    return null;
+  }
 
+  const maxRetries = 3;
+  const retryDelayMs = 500;
+
+  // METHOD 1: Try /v2/businesses endpoint (primary)
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[fetchWhopBusinessName] Attempt ${attempt}/${maxRetries} - /v2/businesses/${whopCompanyId}...`);
+      const response = await fetch(
+        `https://api.whop.com/api/v2/businesses/${whopCompanyId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Accept': 'application/json',
+          },
+          signal: AbortSignal.timeout(5000), // 5 second timeout
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const businessName = data.title || data.name || null;
+        if (businessName) {
+          console.log(`[fetchWhopBusinessName] ✅ Got business name from /v2/businesses: ${businessName}`);
+          return businessName;
+        }
+      } else if (response.status === 429) {
+        // Rate limited - wait longer before retry
+        console.log(`[fetchWhopBusinessName] Rate limited, waiting before retry...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs * attempt * 2));
+      } else {
+        console.log(`[fetchWhopBusinessName] /v2/businesses returned ${response.status}`);
+      }
+    } catch (e) {
+      console.log(`[fetchWhopBusinessName] Attempt ${attempt} failed:`, e);
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs * attempt));
+      }
+    }
+  }
+
+  // METHOD 2: Try /v5/app/companies endpoint (fallback)
   try {
-    console.log(`[fetchWhopBusinessName] Fetching business name for ${whopCompanyId}...`);
-    const response = await fetch(
-      `https://api.whop.com/api/v2/businesses/${whopCompanyId}`,
+    console.log(`[fetchWhopBusinessName] Trying /v5/app/companies fallback...`);
+    const companiesResponse = await fetch(
+      `https://api.whop.com/api/v5/app/companies`,
       {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Accept': 'application/json',
-        }
+        },
+        signal: AbortSignal.timeout(5000),
       }
     );
 
-    if (response.ok) {
-      const data = await response.json();
-      const businessName = data.title || data.name || null;
-      console.log(`[fetchWhopBusinessName] Got business name: ${businessName}`);
-      return businessName;
-    } else {
-      console.log(`[fetchWhopBusinessName] API returned ${response.status}`);
+    if (companiesResponse.ok) {
+      const companiesData = await companiesResponse.json();
+      const companies = companiesData.data || [];
+      const matchingCompany = companies.find((c: any) => c.id === whopCompanyId);
+      if (matchingCompany) {
+        const businessName = matchingCompany.title || matchingCompany.name || null;
+        if (businessName) {
+          console.log(`[fetchWhopBusinessName] ✅ Got business name from /v5/app/companies: ${businessName}`);
+          return businessName;
+        }
+      }
     }
   } catch (e) {
-    console.log(`[fetchWhopBusinessName] Failed:`, e);
+    console.log(`[fetchWhopBusinessName] /v5/app/companies fallback failed:`, e);
   }
+
+  // METHOD 3: Try /v5/companies/{id} endpoint (second fallback)
+  try {
+    console.log(`[fetchWhopBusinessName] Trying /v5/companies/${whopCompanyId} fallback...`);
+    const companyResponse = await fetch(
+      `https://api.whop.com/api/v5/companies/${whopCompanyId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+
+    if (companyResponse.ok) {
+      const companyData = await companyResponse.json();
+      const businessName = companyData.title || companyData.name || null;
+      if (businessName) {
+        console.log(`[fetchWhopBusinessName] ✅ Got business name from /v5/companies: ${businessName}`);
+        return businessName;
+      }
+    }
+  } catch (e) {
+    console.log(`[fetchWhopBusinessName] /v5/companies fallback failed:`, e);
+  }
+
+  console.log(`[fetchWhopBusinessName] ❌ All methods failed for ${whopCompanyId}`);
   return null;
 }
 
@@ -610,18 +691,29 @@ export const onboardUser = action({
         throw new Error("Failed to create company");
       }
 
-      // Step 4.5: Auto-fix company name if it was stored with the experience name
-      // This ensures existing companies get updated with the correct business/store name
-      if (!isNewCompany && whopCompanyId) {
+      // Step 4.5: Auto-fix company name on EVERY login
+      // This ensures companies always have the correct business/store name, not experience name
+      // Runs for both new and existing companies since API might fail initially
+      if (whopCompanyId) {
         const correctBusinessName = await fetchWhopBusinessName(whopCompanyId);
-        if (correctBusinessName && correctBusinessName !== company.name) {
-          console.log(`[onboardUser] Updating company name from "${company.name}" to "${correctBusinessName}"`);
+
+        // Check if we need to update: either the name is wrong OR it looks like an experience name
+        const currentName = company.name;
+        const looksLikeExperienceName = currentName.toLowerCase().includes('support') &&
+                                        currentName.toLowerCase().includes('chat') ||
+                                        currentName.toLowerCase() === 'my company' ||
+                                        currentName.startsWith('exp_');
+
+        if (correctBusinessName && (correctBusinessName !== currentName || looksLikeExperienceName)) {
+          console.log(`[onboardUser] ✅ Auto-fixing company name from "${currentName}" to "${correctBusinessName}"`);
           await ctx.runMutation(api.companies.mutations.updateCompanyName, {
             companyId: company._id,
             name: correctBusinessName,
           });
           // Update local reference for use in response
           companyName = correctBusinessName;
+        } else if (!correctBusinessName && looksLikeExperienceName) {
+          console.log(`[onboardUser] ⚠️ Company name "${currentName}" looks like experience name but couldn't fetch correct name`);
         }
       }
 

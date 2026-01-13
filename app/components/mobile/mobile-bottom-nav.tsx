@@ -6,12 +6,13 @@ import {
   Settings as SettingsIcon,
   Eye,
   Bot,
-  Blocks,
-  CreditCard,
   ChartNoAxesColumn,
-  Users,
   MoreHorizontal,
   LucideIcon,
+  Activity,
+  CreditCard,
+  HelpCircle,
+  Grid,
 } from "lucide-react";
 import { usePathname, useRouter, useParams } from "next/navigation";
 import { useUser } from "@/app/contexts/user-context";
@@ -53,6 +54,7 @@ export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
   }
 
   // Define navigation items based on role
+  // Matches new sidebar structure: Support Tickets, AI Studio, Customer Test, Analytics
   const getNavItems = (): NavItem[] => {
     const baseItems: NavItem[] = [
       { id: "support", icon: MessageSquare, label: "Support", route: "/" },
@@ -62,12 +64,13 @@ export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
       return [
         ...baseItems,
         { id: "ai-studio", icon: Bot, label: "AI Studio", route: "/ai-studio" },
-        { id: "workspace", icon: Blocks, label: "Products", route: "/workspace" },
-        { id: "team", icon: Users, label: "Team", route: "/workspace/team" },
-        { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
         { id: "customer-test", icon: Eye, label: "Test", route: "/customer-test" },
+        { id: "usage", icon: Activity, label: "Usage", route: "/analytics/usage" },
+        { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
         { id: "billing", icon: CreditCard, label: "Billing", route: "/billing" },
         { id: "settings", icon: SettingsIcon, label: "Settings", route: "/settings" },
+        { id: "help", icon: HelpCircle, label: "Help", route: "/help" },
+        { id: "more-apps", icon: Grid, label: "More Apps", route: "/more-apps" },
       ];
     }
 
@@ -75,28 +78,30 @@ export function MobileBottomNav({ userType, user }: MobileBottomNavProps) {
       return [
         ...baseItems,
         { id: "ai-studio", icon: Bot, label: "AI Studio", route: "/ai-studio" },
-        { id: "workspace", icon: Blocks, label: "Products", route: "/workspace" },
-        { id: "team", icon: Users, label: "Team", route: "/workspace/team" },
-        { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
         { id: "customer-test", icon: Eye, label: "Test", route: "/customer-test" },
+        { id: "usage", icon: Activity, label: "Usage", route: "/analytics/usage" },
+        { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
         { id: "settings", icon: SettingsIcon, label: "Settings", route: "/settings" },
+        { id: "help", icon: HelpCircle, label: "Help", route: "/help" },
       ];
     }
 
     if (effectiveUserType === "viewer") {
       return [
         ...baseItems,
+        { id: "usage", icon: Activity, label: "Usage", route: "/analytics/usage" },
         { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
         { id: "settings", icon: SettingsIcon, label: "Settings", route: "/settings" },
+        { id: "help", icon: HelpCircle, label: "Help", route: "/help" },
       ];
     }
 
     // Support role
     return [
       ...baseItems,
-      { id: "workspace", icon: Blocks, label: "Products", route: "/workspace" },
       { id: "customer-test", icon: Eye, label: "Test", route: "/customer-test" },
       { id: "settings", icon: SettingsIcon, label: "Settings", route: "/settings" },
+      { id: "help", icon: HelpCircle, label: "Help", route: "/help" },
     ];
   };
 

@@ -48,7 +48,8 @@ export function CustomerEmptyState({
     companyId ? { companyId: companyId as Id<"companies"> } : "skip"
   );
 
-  const companyName = company?.name || "Bookoo Apps";
+  // Use company name from Convex query, show generic text while loading
+  const companyName = company?.name || "";
 
   // Auto-focus input on mount
   useEffect(() => {
@@ -204,7 +205,7 @@ export function CustomerEmptyState({
               "var(--font-outfit), var(--font-geist-sans), sans-serif",
           }}
         >
-          {companyName} Support
+          {companyName ? `${companyName} Support` : "Support"}
         </h1>
 
         {/* White Box Container */}
@@ -216,7 +217,7 @@ export function CustomerEmptyState({
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={`Ask anything on ${companyName}, we are here to help!`}
+              placeholder={companyName ? `Ask anything about ${companyName}, we're here to help!` : "Ask us anything, we're here to help!"}
               disabled={isCreating || isUploading}
               className="border-0 shadow-none focus-visible:ring-0 focus-visible:bg-transparent dark:focus-visible:bg-transparent text-body-sm px-0 py-0 placeholder:text-body"
             />

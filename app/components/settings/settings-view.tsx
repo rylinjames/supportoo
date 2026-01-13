@@ -3,26 +3,17 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { COMMON_TIMEZONES, detectTimezone } from "@/app/lib/timezones";
-import { AgentGreetingSettings } from "../support/agent-greeting-settings";
+import { detectTimezone } from "@/app/lib/timezones";
 
 export function SettingsView() {
-  const { userData, getCurrentRole } = useUser();
+  const { userData } = useUser();
   const [isLoading, setIsLoading] = useState(true);
   const updatePreferences = useMutation(
     api.users.preferences_mutations.updateUserPreferences
@@ -59,16 +50,6 @@ export function SettingsView() {
       setIsLoading(true);
     }
   }, [fullUser, userData]);
-
-  // Generate initials from displayName
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
 
   // Apply theme changes
   const handleThemeChange = async (newTheme: "light" | "dark" | "system") => {
@@ -148,7 +129,7 @@ export function SettingsView() {
       <div className="sticky top-0 z-10 bg-background p-4 border-b border-border">
         <h1 className="text-h2 text-foreground">Settings</h1>
         <p className="text-body-sm text-muted-foreground mt-1">
-          Manage your profile and preferences
+          Customize your preferences
         </p>
       </div>
 
@@ -157,27 +138,14 @@ export function SettingsView() {
         <div className="space-y-12">
           {isLoading ? (
             <>
-              {/* Profile Section Skeleton */}
+              {/* Theme Section Skeleton */}
               <div className="space-y-6">
                 <Skeleton className="h-5 w-32" />
                 <Skeleton className="h-4 w-64" />
-                <div className="flex items-start gap-4">
-                  <Skeleton className="h-16 w-16 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-48" />
-                    <Skeleton className="h-4 w-56" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Preferences Section Skeleton */}
-              <div className="space-y-6">
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-4 w-64" />
-                <div className="space-y-8">
-                  <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-16 w-full" />
+                <div className="space-y-3">
+                  <Skeleton className="h-6 w-24" />
+                  <Skeleton className="h-6 w-24" />
+                  <Skeleton className="h-6 w-24" />
                 </div>
               </div>
 
@@ -190,126 +158,50 @@ export function SettingsView() {
             </>
           ) : (
             <>
-              {/* Profile Section */}
+              {/* Theme Section */}
               <div>
                 <div className="mb-6">
-                  <h2 className="text-h3 text-foreground">Profile</h2>
+                  <h2 className="text-h3 text-foreground">Appearance</h2>
                   <p className="text-body-sm text-muted-foreground mt-1">
-                    Your account information from Whop
+                    Choose your preferred color scheme
                   </p>
                 </div>
 
-                <div className="flex items-start gap-4">
-                  <Avatar className="h-16 w-16">
-                    <AvatarImage
-                      src={userData?.user?.avatarUrl}
-                      alt={userData?.user?.displayName || "User"}
-                    />
-                    <AvatarFallback className="bg-primary text-primary-foreground text-body-sm">
-                      {userData?.user?.displayName
-                        ? getInitials(userData.user.displayName)
-                        : "U"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <p className="text-body-sm text-foreground font-medium">
-                      {userData?.user?.displayName || "User"}
-                    </p>
-                    <p className="text-body-sm text-muted-foreground mt-0.5">
-                      @{userData?.user?.whopUsername || "username"}
-                    </p>
-                    <p className="text-body-sm text-muted-foreground mt-3">
-                      Profile information is managed through your Whop account
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Preferences Section */}
-              <div>
-                <div className="mb-6">
-                  <h2 className="text-h3 text-foreground">Preferences</h2>
-                  <p className="text-body-sm text-muted-foreground mt-1">
-                    Customize your experience
-                  </p>
-                </div>
-
-                <div className="space-y-8">
-                  {/* Theme Selection */}
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-body-sm text-foreground font-medium">
-                        Theme
-                      </Label>
-                      <p className="text-body-sm text-muted-foreground mt-0.5">
-                        Choose your preferred color scheme
-                      </p>
-                    </div>
-                    <RadioGroup
-                      value={preferences.theme}
-                      onValueChange={(v) =>
-                        handleThemeChange(v as "light" | "dark" | "system")
-                      }
-                    >
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="light" id="light" />
-                        <Label
-                          htmlFor="light"
-                          className="text-body-sm text-foreground font-normal cursor-pointer"
-                        >
-                          Light
-                        </Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="dark" id="dark" />
-                        <Label
-                          htmlFor="dark"
-                          className="text-body-sm text-foreground font-normal cursor-pointer"
-                        >
-                          Dark
-                        </Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="system" id="system" />
-                        <Label
-                          htmlFor="system"
-                          className="text-body-sm text-foreground font-normal cursor-pointer"
-                        >
-                          System
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-
-                  {/* Timezone Selection */}
-                  {/* <div className="space-y-3">
-                    <div>
+                <div className="space-y-3">
+                  <RadioGroup
+                    value={preferences.theme}
+                    onValueChange={(v) =>
+                      handleThemeChange(v as "light" | "dark" | "system")
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="light" id="light" />
                       <Label
-                        htmlFor="timezone"
-                        className="text-body-sm text-foreground font-medium"
+                        htmlFor="light"
+                        className="text-body-sm text-foreground font-normal cursor-pointer"
                       >
-                        Timezone
+                        Light
                       </Label>
-                      <p className="text-body-sm text-muted-foreground mt-0.5">
-                        Select your timezone for accurate timestamps
-                      </p>
                     </div>
-                    <Select
-                      value={preferences.timezone}
-                      onValueChange={handleTimezoneChange}
-                    >
-                      <SelectTrigger id="timezone" className="w-full max-w-md">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COMMON_TIMEZONES.map((tz) => (
-                          <SelectItem key={tz.value} value={tz.value}>
-                            {tz.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div> */}
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="dark" id="dark" />
+                      <Label
+                        htmlFor="dark"
+                        className="text-body-sm text-foreground font-normal cursor-pointer"
+                      >
+                        Dark
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="system" id="system" />
+                      <Label
+                        htmlFor="system"
+                        className="text-body-sm text-foreground font-normal cursor-pointer"
+                      >
+                        System
+                      </Label>
+                    </div>
+                  </RadioGroup>
                 </div>
               </div>
 
@@ -318,40 +210,23 @@ export function SettingsView() {
                 <div className="mb-6">
                   <h2 className="text-h3 text-foreground">Notifications</h2>
                   <p className="text-body-sm text-muted-foreground mt-1">
-                    Receive alerts for important events
+                    Manage your notification preferences
                   </p>
                 </div>
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-body-sm text-foreground font-medium">
-                      Notifications
-                    </Label>
-                    <p className="text-body-sm text-muted-foreground mt-0.5">
-                      Receive alerts for important events
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between max-w-md">
-                    <Label
-                      htmlFor="notifications"
-                      className="text-body-sm text-foreground cursor-pointer"
-                    >
-                      Enable notifications
-                    </Label>
-                    <Switch
-                      id="notifications"
-                      checked={preferences.notificationsEnabled}
-                      onCheckedChange={handleNotificationsChange}
-                    />
-                  </div>
+                <div className="flex items-center justify-between max-w-md">
+                  <Label
+                    htmlFor="notifications"
+                    className="text-body-sm text-foreground cursor-pointer"
+                  >
+                    Enable notifications
+                  </Label>
+                  <Switch
+                    id="notifications"
+                    checked={preferences.notificationsEnabled}
+                    onCheckedChange={handleNotificationsChange}
+                  />
                 </div>
               </div>
-
-              {/* Agent Greeting Settings - Only for support/admin users */}
-              {(getCurrentRole() === "support" || getCurrentRole() === "admin") && (
-                <div className="mt-8">
-                  <AgentGreetingSettings />
-                </div>
-              )}
             </>
           )}
         </div>

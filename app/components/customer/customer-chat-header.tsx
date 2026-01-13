@@ -43,7 +43,8 @@ export function CustomerChatHeader({
     companyId ? { companyId: companyId as Id<"companies"> } : "skip"
   );
 
-  const companyName = company?.name || "Bookoo Apps";
+  // Use company name from Convex query, show "Support" while loading
+  const companyName = company?.name || "";
 
   const handleThemeChange = (newTheme: "light" | "dark" | "system") => {
     setTheme(newTheme);
@@ -62,7 +63,7 @@ export function CustomerChatHeader({
   return (
     <div className="border-b border-border bg-background px-6 py-4">
       <div className="flex items-center justify-between max-w-[800px] mx-auto">
-        <p className="text-body-sm">{companyName} Support</p>
+        <p className="text-body-sm">{companyName ? `${companyName} Support` : "Support"}</p>
 
         {showMenu && (
           <DropdownMenu>

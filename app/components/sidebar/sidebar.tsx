@@ -12,13 +12,13 @@ import {
   ChevronDown,
   Bot,
   Blocks,
-  CreditCard,
   MessageSquare,
-  Settings,
   ChartNoAxesColumn,
-  FileText,
-  Users,
   LucideIcon,
+  Sparkles,
+  Building2,
+  ArrowRightLeft,
+  Activity,
 } from "lucide-react";
 import { Separator } from "../../../components/ui/separator";
 import { SidebarItem } from "./sidebar-item";
@@ -145,85 +145,82 @@ export function Sidebar({ userType, user }: SidebarProps) {
 
   // Define navigation sections based on role
   const getNavSections = (): NavSection[] => {
-    const supportSection: NavSection = {
-      id: "support",
+    // Support Tickets - main entry point
+    const supportTicketsSection: NavSection = {
+      id: "support-tickets",
       label: null,
       items: [
-        { id: "support", icon: MessageSquare, label: "Support", route: "/", badge: unresolvedCount },
+        { id: "support", icon: MessageSquare, label: "Support Tickets", route: "/", badge: unresolvedCount },
       ],
     };
 
-    const workspaceSection: NavSection = {
-      id: "workspace",
-      label: "Workspace",
+    // AI Studio - expandable section with tabs
+    const aiStudioSection: NavSection = {
+      id: "ai-studio",
+      label: "AI Studio",
       defaultExpanded: true,
       items: [
-        { id: "ai-studio", icon: Bot, label: "AI Studio", route: "/ai-studio" },
-        { id: "products", icon: Blocks, label: "Products", route: "/workspace" },
-        { id: "team", icon: Users, label: "Team", route: "/workspace/team" },
+        { id: "personality", icon: Sparkles, label: "Personality & Tone", route: "/ai-studio" },
+        { id: "company-context", icon: Building2, label: "Company Context", route: "/ai-studio?tab=context" },
+        { id: "handoff", icon: ArrowRightLeft, label: "Handoff Triggers", route: "/ai-studio?tab=handoff" },
       ],
     };
 
+    // Customer Test - standalone item
+    const customerTestSection: NavSection = {
+      id: "customer-test",
+      label: null,
+      items: [
+        { id: "customer-test", icon: Eye, label: "Customer Test", route: "/customer-test" },
+      ],
+    };
+
+    // Analytics - expandable section
     const analyticsSection: NavSection = {
       id: "analytics",
       label: "Analytics",
       defaultExpanded: false,
       items: [
+        { id: "usage", icon: Activity, label: "Usage", route: "/analytics/usage" },
         { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
-        { id: "customer-test", icon: Eye, label: "Customer Test", route: "/customer-test" },
-      ],
-    };
-
-    const settingsSection: NavSection = {
-      id: "settings",
-      label: null,
-      items: [
-        { id: "settings", icon: Settings, label: "Settings", route: "/settings" },
-      ],
-    };
-
-    const billingSection: NavSection = {
-      id: "billing",
-      label: null,
-      items: [
-        { id: "billing", icon: CreditCard, label: "Billing", route: "/billing" },
       ],
     };
 
     // Role-based navigation
+    // Note: Billing, Settings, Help, More Apps moved to profile dropdown
     if (effectiveUserType === "admin") {
-      return [supportSection, workspaceSection, analyticsSection, billingSection, settingsSection];
+      return [supportTicketsSection, aiStudioSection, customerTestSection, analyticsSection];
     }
 
     if (effectiveUserType === "manager") {
-      return [supportSection, workspaceSection, analyticsSection, settingsSection];
+      return [supportTicketsSection, aiStudioSection, customerTestSection, analyticsSection];
     }
 
     if (effectiveUserType === "viewer") {
       return [
-        supportSection,
+        supportTicketsSection,
         {
           id: "analytics",
           label: null,
-          items: [{ id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" }],
+          items: [
+            { id: "usage", icon: Activity, label: "Usage", route: "/analytics/usage" },
+            { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
+          ],
         },
-        settingsSection,
       ];
     }
 
     // Support role
     return [
-      supportSection,
+      supportTicketsSection,
       {
         id: "workspace",
-        label: "Workspace",
-        defaultExpanded: true,
+        label: null,
         items: [
           { id: "products", icon: Blocks, label: "Products", route: "/workspace" },
-          { id: "customer-test", icon: Eye, label: "Customer Test", route: "/customer-test" },
         ],
       },
-      settingsSection,
+      customerTestSection,
     ];
   };
 

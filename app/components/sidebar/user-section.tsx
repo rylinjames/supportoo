@@ -6,10 +6,12 @@ import { useUser } from "@/app/contexts/user-context";
 import {
   ChevronDown,
   Settings,
-  LogOut,
   Sun,
   Moon,
   Monitor,
+  CreditCard,
+  HelpCircle,
+  Grid,
 } from "lucide-react";
 import { AgentAvailabilityStatus } from "../support/agent-availability-status";
 
@@ -181,6 +183,18 @@ export function UserSection({
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {/* Billing - Admin only */}
+        {getCurrentRole() === "admin" && (
+          <DropdownMenuItem
+            onClick={() => {
+              router.push(`/experiences/${experienceId}/billing`);
+            }}
+          >
+            <CreditCard className="h-4 w-4" />
+            Billing
+          </DropdownMenuItem>
+        )}
+
         <DropdownMenuItem
           onClick={() => {
             router.push(`/experiences/${experienceId}/settings`);
@@ -189,6 +203,30 @@ export function UserSection({
           <Settings className="h-4 w-4" />
           Settings
         </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
+        {/* Help & Support */}
+        <DropdownMenuItem
+          onClick={() => {
+            router.push(`/experiences/${experienceId}/help`);
+          }}
+        >
+          <HelpCircle className="h-4 w-4" />
+          Help & Support
+        </DropdownMenuItem>
+
+        {/* More Apps */}
+        <DropdownMenuItem
+          onClick={() => {
+            router.push(`/experiences/${experienceId}/more-apps`);
+          }}
+        >
+          <Grid className="h-4 w-4" />
+          More Apps
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
 
         {/* Theme Submenu */}
         <DropdownMenuSub>

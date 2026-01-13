@@ -22,6 +22,7 @@ import {
   Volume2,
   VolumeX,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import {
   MessageBubble,
@@ -117,12 +118,14 @@ export function ConversationDetail({
   const [presenceReady, setPresenceReady] = useState(false);
   const [presenceId, setPresenceId] = useState<Id<"presence"> | null>(null);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCustomerProfile, setShowCustomerProfile] = useState(false);
   const [showQuickReplyPicker, setShowQuickReplyPicker] = useState(false);
   const [showHandBackDialog, setShowHandBackDialog] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const textareaRef = usePreventZoom<HTMLTextAreaElement>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const convex = useConvex();
@@ -299,6 +302,11 @@ export function ConversationDetail({
 
   // Hand back to AI
   const handBackToAI = useMutation(api.conversations.mutations.updateStatus);
+
+  // Delete conversation
+  const deleteConversation = useMutation(
+    api.conversations.mutations.deleteConversation
+  );
 
   // Typing indicator
   const setTyping = useMutation(api.presence.mutations.setTyping);
@@ -719,6 +727,23 @@ export function ConversationDetail({
     }
   };
 
+  const handleDeleteConversation = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteConversation({
+        conversationId: conversation.id as Id<"conversations">,
+      });
+      setShowDeleteDialog(false);
+      toast.success("Conversation deleted");
+      onBack(); // Go back to conversation list
+    } catch (error) {
+      console.error("Failed to delete conversation:", error);
+      toast.error("Failed to delete conversation");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleAttachClick = () => {
     if (!canAttachFiles) {
       toast.info("File attachments are only available on Pro and Elite plans");
@@ -957,6 +982,13 @@ export function ConversationDetail({
                 <DropdownMenuItem onClick={() => handleExportConversation()}>
                   <Download className="h-4 w-4 mr-2" />
                   Export to CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete conversation
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1267,6 +1299,29 @@ export function ConversationDetail({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleHandBackToAI}>
               Hand Back to AI
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Conversation Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this conversation? This action cannot
+              be undone. All messages will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConversation}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

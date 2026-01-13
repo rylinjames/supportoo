@@ -514,3 +514,43 @@ export const updateThreadId = mutation({
     });
   },
 });
+
+// ============================================================================
+// DELETE CONVERSATION
+// ============================================================================
+
+/**
+ * Delete a conversation and all its associated messages
+ *
+ * This is a permanent action - all messages will be deleted.
+ * Only use when the conversation needs to be completely removed.
+ */
+export const deleteConversation = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  handler: async (ctx, { conversationId }) => {
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation) {
+      throw new Error("Conversation not found");
+    }
+
+    // Delete all messages in this conversation
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+      .collect();
+
+    for (const message of messages) {
+      await ctx.db.delete(message._id);
+    }
+
+    // Delete the conversation itself
+    await ctx.db.delete(conversationId);
+
+    return {
+      success: true,
+      deletedMessages: messages.length,
+    };
+  },
+});

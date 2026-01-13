@@ -6,23 +6,39 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { detectTimezone } from "@/app/lib/timezones";
+import { Building2, Check } from "lucide-react";
 
 export function SettingsView() {
   const { userData } = useUser();
   const [isLoading, setIsLoading] = useState(true);
+  const [companyName, setCompanyName] = useState("");
+  const [isSavingCompanyName, setIsSavingCompanyName] = useState(false);
   const updatePreferences = useMutation(
     api.users.preferences_mutations.updateUserPreferences
+  );
+  const updateCompanyName = useMutation(
+    api.companies.mutations.updateCompanyName
   );
 
   // Query full user document to get preferences
   const fullUser = useQuery(
     api.users.queries.getUserById,
     userData?.user?._id ? { userId: userData.user._id as Id<"users"> } : "skip"
+  );
+
+  // Query company data to get current name
+  const company = useQuery(
+    api.companies.queries.getCompanyById,
+    userData?.currentCompanyId
+      ? { companyId: userData.currentCompanyId as Id<"companies"> }
+      : "skip"
   );
 
   // Initialize preferences from user data
@@ -50,6 +66,32 @@ export function SettingsView() {
       setIsLoading(true);
     }
   }, [fullUser, userData]);
+
+  // Update company name when company loads
+  useEffect(() => {
+    if (company) {
+      setCompanyName(company.name || "");
+    }
+  }, [company]);
+
+  // Handle company name save
+  const handleCompanyNameSave = async () => {
+    if (!userData?.currentCompanyId || !companyName.trim()) return;
+
+    setIsSavingCompanyName(true);
+    try {
+      await updateCompanyName({
+        companyId: userData.currentCompanyId as Id<"companies">,
+        name: companyName.trim(),
+      });
+      toast.success("Company name updated");
+    } catch (error) {
+      console.error("Error updating company name:", error);
+      toast.error("Failed to update company name");
+    } finally {
+      setIsSavingCompanyName(false);
+    }
+  };
 
   // Apply theme changes
   const handleThemeChange = async (newTheme: "light" | "dark" | "system") => {
@@ -158,6 +200,41 @@ export function SettingsView() {
             </>
           ) : (
             <>
+              {/* Company Name Section */}
+              <div>
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Building2 className="h-5 w-5 text-primary" />
+                    <h2 className="text-h3 text-foreground">Company Name</h2>
+                  </div>
+                  <p className="text-body-sm text-muted-foreground">
+                    This name appears in the customer chat header
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 max-w-md">
+                  <Input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="Enter company name"
+                    className="flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleCompanyNameSave}
+                    disabled={isSavingCompanyName || companyName === company?.name}
+                  >
+                    {isSavingCompanyName ? (
+                      "Saving..."
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 mr-1" />
+                        Save
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
               {/* Theme Section */}
               <div>
                 <div className="mb-6">

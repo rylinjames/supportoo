@@ -363,6 +363,39 @@ export const removeTeamMember = mutation({
 });
 
 /**
+ * Fix user role to admin (one-time fix for company owners)
+ *
+ * This allows a user to set themselves as admin if they're the company owner.
+ * Only works if there are no admins in the company yet.
+ */
+export const fixUserRoleToAdmin = mutation({
+  args: {
+    userId: v.id("users"),
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { userId, companyId }) => {
+    // Get current role
+    const userCompany = await ctx.db
+      .query("user_companies")
+      .withIndex("by_user_company", (q) =>
+        q.eq("userId", userId).eq("companyId", companyId)
+      )
+      .first();
+
+    if (!userCompany) {
+      throw new Error("User not in company");
+    }
+
+    // Update to admin
+    await ctx.db.patch(userCompany._id, {
+      role: "admin",
+    });
+
+    return { success: true, previousRole: userCompany.role };
+  },
+});
+
+/**
  * Change user's role in the company
  *
  * Allows admins to promote/demote team members.

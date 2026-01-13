@@ -10,8 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Bot,
-  Blocks,
   MessageSquare,
   ChartNoAxesColumn,
   LucideIcon,
@@ -223,16 +221,9 @@ export function Sidebar({ userType, user }: SidebarProps) {
       ];
     }
 
-    // Support role
+    // Support role - simplified view (no AI config access)
     return [
       supportTicketsSection,
-      {
-        id: "workspace",
-        label: null,
-        items: [
-          { id: "products", icon: Blocks, label: "Products", route: "/workspace" },
-        ],
-      },
       customerTestSection,
     ];
   };

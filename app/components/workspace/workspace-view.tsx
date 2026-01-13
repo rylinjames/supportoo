@@ -2,30 +2,40 @@
 
 import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
+import { useSearchParams } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { CompanyContextTab } from "@/app/components/workspace/company-context-tab";
 import { TemplatesTab } from "./templates-tab";
 import { TeamTab } from "./team-tab";
-import { ProductsTab } from "./products-tab";
 import { Briefcase } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabId = "context" | "templates" | "team" | "products";
+type TabId = "templates" | "team";
 
 const TABS: { id: TabId; label: string }[] = [
-  { id: "context", label: "Company Context" },
   { id: "templates", label: "Templates" },
   { id: "team", label: "Team" },
-  { id: "products", label: "Products" },
 ];
 
 export function WorkspaceView() {
   const { userData } = useUser();
-  const [activeTab, setActiveTab] = useState<TabId>("context");
+  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);
+
+  // Read tab from URL query params
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<TabId>(
+    tabParam === "team" ? "team" : "templates"
+  );
+
+  // Update tab when URL changes
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "team") setActiveTab("team");
+    else setActiveTab("templates");
+  }, [searchParams]);
 
   // Query fullConfig to determine when data is ready
   const fullConfig = useQuery(
@@ -109,14 +119,8 @@ export function WorkspaceView() {
               <Skeleton className="h-48 w-full rounded-lg" />
             </div>
           </div>
-        ) : activeTab === "context" ? (
-          <CompanyContextTab fullConfig={fullConfig} />
         ) : activeTab === "templates" ? (
           <TemplatesTab
-            companyId={userData!.currentCompanyId as Id<"companies">}
-          />
-        ) : activeTab === "products" ? (
-          <ProductsTab
             companyId={userData!.currentCompanyId as Id<"companies">}
           />
         ) : (

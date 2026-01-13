@@ -4,10 +4,11 @@ import {
   AvatarFallback,
 } from "../../../components/ui/avatar";
 import { Badge } from "../../../components/ui/badge";
-import { Check } from "lucide-react";
+import { Check, Bot, AlertCircle, User, CheckCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { Conversation } from "./types";
 import { useUser } from "@/app/contexts/user-context";
+import { cn } from "@/lib/utils";
 
 interface ConversationListItemProps {
   conversation: Conversation;
@@ -28,8 +29,9 @@ export function ConversationListItem({
         return (
           <Badge
             variant="secondary"
-            className="h-5 px-2 text-[10px] bg-primary/10 text-primary hover:bg-primary/10"
+            className="h-5 px-2 text-[10px] bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10 flex items-center gap-1"
           >
+            <Bot className="h-3 w-3" />
             AI handling
           </Badge>
         );
@@ -37,9 +39,10 @@ export function ConversationListItem({
         return (
           <Badge
             variant="secondary"
-            className="h-5 px-2 text-[10px] bg-orange/20 text-orange hover:bg-orange/20"
+            className="h-5 px-2 text-[10px] bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 hover:bg-orange-500/10 flex items-center gap-1"
           >
-            Available for pick up
+            <AlertCircle className="h-3 w-3" />
+            Needs pickup
           </Badge>
         );
       case "support": {
@@ -54,26 +57,25 @@ export function ConversationListItem({
           return (
             <Badge
               variant="secondary"
-              className="h-5 px-2 text-[10px] bg-success/10 text-success hover:bg-success/10"
+              className="h-5 px-2 text-[10px] bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 hover:bg-green-500/10 flex items-center gap-1"
             >
-              You are handling
+              <User className="h-3 w-3" />
+              You&apos;re handling
             </Badge>
           );
         }
 
         // Show other agents handling
         const agent = conversation.participatingAgents[0];
-        const firstName = agent?.name.split(" ")[0] || "Support Staff";
-        const badgeText = agent
-          ? `${firstName}'s handling`
-          : "Support Staff handling";
+        const firstName = agent?.name.split(" ")[0] || "Support";
 
         return (
           <Badge
             variant="secondary"
-            className="h-5 px-2 text-[10px] bg-success/10 text-success hover:bg-success/10"
+            className="h-5 px-2 text-[10px] bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 hover:bg-green-500/10 flex items-center gap-1"
           >
-            {badgeText}
+            <User className="h-3 w-3" />
+            {firstName}&apos;s handling
           </Badge>
         );
       }
@@ -81,8 +83,9 @@ export function ConversationListItem({
         return (
           <Badge
             variant="secondary"
-            className="h-5 px-2 text-[10px] bg-green-500/10 text-green-600 hover:bg-green-500/10"
+            className="h-5 px-2 text-[10px] bg-secondary text-muted-foreground border border-border hover:bg-secondary flex items-center gap-1"
           >
+            <CheckCircle className="h-3 w-3" />
             Resolved
           </Badge>
         );
@@ -90,7 +93,7 @@ export function ConversationListItem({
   };
 
   const formatTime = (date: Date) => {
-    return formatDistanceToNow(date, { addSuffix: true })
+    return formatDistanceToNow(date, { addSuffix: false })
       .replace("about ", "")
       .replace(" ago", "");
   };
@@ -127,46 +130,62 @@ export function ConversationListItem({
     );
   };
 
+  // Get avatar ring color based on status
+  const getAvatarRingClass = () => {
+    if (isSelected) return "ring-primary";
+    if (conversation.status === "available") return "ring-orange-500";
+    if (conversation.status === "ai") return "ring-primary/50";
+    return "ring-transparent";
+  };
+
   return (
     <button
       onClick={onClick}
-      className={`
-          w-full flex items-start gap-3 py-4 px-3 text-left transition-colors rounded-lg
-          ${
-            isSelected
-              ? "bg-primary/10 border border-primary/20"
-              : "hover:bg-muted/50"
-          }
-        `}
+      className={cn(
+        "w-full flex items-start gap-3 p-4 text-left transition-all duration-200 rounded-xl border",
+        "hover:shadow-md hover:border-border/80 hover:-translate-y-0.5",
+        isSelected
+          ? "bg-primary/5 border-primary/30 shadow-sm"
+          : "border-border/50 hover:bg-muted/30",
+        conversation.unread && !isSelected && "border-l-4 border-l-primary",
+        conversation.status === "available" && !isSelected && "bg-orange-500/5"
+      )}
     >
-      {/* Avatar - Cyan accent! */}
-      <Avatar className="h-10 w-10 flex-shrink-0">
+      {/* Avatar with status ring */}
+      <Avatar className={cn(
+        "h-11 w-11 flex-shrink-0 ring-2 ring-offset-2 ring-offset-background transition-all",
+        getAvatarRingClass()
+      )}>
         <AvatarImage
           src={conversation.customerAvatar}
           alt={conversation.customerName}
         />
-        <AvatarFallback className="bg-primary/20 text-primary text-label-sm">
+        <AvatarFallback className="bg-primary/20 text-primary text-sm font-medium">
           {initials}
         </AvatarFallback>
       </Avatar>
 
-      {/* Content - NO borders! */}
+      {/* Content */}
       <div className="flex-1 min-w-0">
-        {/* Name + Badge - Darkest text (foreground) */}
-        <div className="flex items-center gap-2 mb-0.5">
+        {/* Name + Badge */}
+        <div className="flex items-center gap-2 mb-1">
           <h3
-            className={`text-label text-foreground truncate ${conversation.unread ? "font-medium" : ""}`}
+            className={cn(
+              "text-sm truncate",
+              conversation.unread ? "font-semibold text-foreground" : "font-medium text-foreground"
+            )}
           >
             {conversation.customerName}
           </h3>
           {getStatusBadge()}
         </div>
 
-        {/* Last Message - Darker if needs reply */}
+        {/* Last Message */}
         <p
-          className={`text-body-sm truncate mb-1.5 ${
+          className={cn(
+            "text-sm truncate mb-2",
             needsReply ? "text-foreground font-medium" : "text-muted-foreground"
-          }`}
+          )}
         >
           {conversation.lastMessageHasAttachment &&
             conversation.lastMessageAttachmentType?.startsWith("image/") && (
@@ -175,20 +194,20 @@ export function ConversationListItem({
           {conversation.lastMessage}
         </p>
 
-        {/* Meta Row - Lightest gray (tertiary) */}
+        {/* Meta Row */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Delivery Status Checkmarks (when we sent last message) */}
           {renderDeliveryStatus()}
 
           {/* Timestamp */}
-          <span className="text-caption text-foreground/40">
+          <span className="text-xs text-muted-foreground">
             {formatTime(conversation.lastMessageTime)}
           </span>
 
           {/* Participating Agents */}
           {conversation.participatingAgents.length > 0 && (
             <>
-              <span className="text-caption text-foreground/40">•</span>
+              <span className="text-xs text-muted-foreground/50">•</span>
               <div className="flex items-center gap-1">
                 <div className="flex -space-x-1">
                   {conversation.participatingAgents.slice(0, 3).map((agent) => (
@@ -203,7 +222,7 @@ export function ConversationListItem({
                     </Avatar>
                   ))}
                 </div>
-                <span className="text-caption text-foreground/40">
+                <span className="text-xs text-muted-foreground">
                   {conversation.participatingAgents
                     .map((a) => a.name.split(" ")[0])
                     .join(", ")}
@@ -213,18 +232,13 @@ export function ConversationListItem({
           )}
         </div>
 
-        {/* Handoff Reason (Available only) - Medium gray */}
+        {/* Handoff Reason (Available only) */}
         {conversation.status === "available" && conversation.handoffReason && (
-          <p className="text-caption text-muted-foreground mt-1.5">
-            {conversation.handoffReason}
+          <p className="text-xs text-orange-600 dark:text-orange-400 mt-2 line-clamp-1">
+            💬 {conversation.handoffReason}
           </p>
         )}
       </div>
-
-      {/* Unread Indicator */}
-      {conversation.unread && (
-        <div className="flex-shrink-0 w-2 h-2 rounded-full bg-primary mt-1" />
-      )}
     </button>
   );
 }

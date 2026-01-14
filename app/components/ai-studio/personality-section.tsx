@@ -36,16 +36,6 @@ export function PersonalitySection({
 }: PersonalitySectionProps) {
   return (
     <div>
-      {/* Section Header */}
-      <div className="mb-6">
-        <h2 className="text-h3 font-semibold text-foreground">
-          Personality & Tone
-        </h2>
-        <p className="text-muted-foreground mt-1">
-          How should your AI communicate with customers?
-        </p>
-      </div>
-
       {/* Content */}
       <div className="space-y-6">
         {/* Personality Dropdown */}

@@ -84,33 +84,24 @@ export function CompanyContextTab({ fullConfig }: CompanyContextTabProps) {
     <div className="space-y-8">
       {/* Current Context Display */}
       {fullConfig.companyContextOriginal && (
-        <div className="space-y-3">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Current Context</h2>
-            <p className="text-sm text-muted-foreground">
-              This information helps the AI understand your business
-            </p>
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {/* Header */}
+          <div className="px-4 py-3 bg-secondary/50 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">Stored Context</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span>{wordCount(fullConfig.companyContextOriginal)} words</span>
+              <span>•</span>
+              <span>Updated {formatDate(fullConfig.companyContextLastUpdated)}</span>
+            </div>
           </div>
-
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            {/* Header */}
-            <div className="px-4 py-3 bg-secondary/50 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium text-foreground">Stored Context</span>
-              </div>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span>{wordCount(fullConfig.companyContextOriginal)} words</span>
-                <span>•</span>
-                <span>Updated {formatDate(fullConfig.companyContextLastUpdated)}</span>
-              </div>
-            </div>
-            {/* Content */}
-            <div className="p-4 max-h-[300px] overflow-y-auto">
-              <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
-                {fullConfig.companyContextOriginal}
-              </pre>
-            </div>
+          {/* Content */}
+          <div className="p-4 max-h-[300px] overflow-y-auto">
+            <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
+              {fullConfig.companyContextOriginal}
+            </pre>
           </div>
         </div>
       )}

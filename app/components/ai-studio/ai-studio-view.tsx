@@ -15,7 +15,6 @@ import { TestAISection } from "@/app/components/ai-studio/test-ai-section";
 import { CompanyContextTab } from "@/app/components/workspace/company-context-tab";
 import { ProductsTab } from "@/app/components/workspace/products-tab";
 import { useUser } from "@/app/contexts/user-context";
-import { cn } from "@/lib/utils";
 
 export interface AIConfig {
   personality: "professional" | "friendly" | "casual" | "technical";
@@ -166,12 +165,28 @@ export function AIStudioView() {
 
   const isLoading = !fullConfig && userData?.currentCompanyId;
 
-  // Tab configuration
-  const tabs = [
-    { id: "personality" as const, label: "Personality & Tone" },
-    { id: "context" as const, label: "Company Context" },
-    { id: "handoff" as const, label: "Handoff Triggers" },
-  ];
+  // Get page title and description based on active tab
+  const getPageInfo = () => {
+    switch (activeTab) {
+      case "context":
+        return {
+          title: "Company Context",
+          description: "Add knowledge about your company for the AI to reference",
+        };
+      case "handoff":
+        return {
+          title: "Handoff Triggers",
+          description: "Configure when the AI should hand off to human support",
+        };
+      default:
+        return {
+          title: "Personality & Tone",
+          description: "Configure how your AI assistant responds to customers",
+        };
+    }
+  };
+
+  const pageInfo = getPageInfo();
 
   return (
     <div className="h-full overflow-y-auto pb-20 lg:pb-0 text-body-sm">
@@ -181,10 +196,10 @@ export function AIStudioView() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-h2 font-semibold text-foreground">
-                AI Studio
+                {pageInfo.title}
               </h1>
               <p className="text-muted-foreground mt-1">
-                Configure how your AI assistant responds to customers
+                {pageInfo.description}
               </p>
             </div>
             {/* Only show save/discard on personality and handoff tabs */}
@@ -210,28 +225,6 @@ export function AIStudioView() {
               </div>
             )}
           </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="flex border-t border-border">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "px-4 py-3 text-body-sm font-medium transition-colors relative",
-                "hover:text-foreground",
-                activeTab === tab.id
-                  ? "text-foreground"
-                  : "text-muted-foreground"
-              )}
-            >
-              {tab.label}
-              {activeTab === tab.id && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-              )}
-            </button>
-          ))}
         </div>
       </div>
 

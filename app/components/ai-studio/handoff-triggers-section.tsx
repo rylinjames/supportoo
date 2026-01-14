@@ -32,16 +32,6 @@ export function HandoffTriggersSection({
 }: HandoffTriggersSectionProps) {
   return (
     <div>
-      {/* Section Header */}
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-foreground">
-          Handoff Triggers
-        </h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Configure when the AI should hand off conversations to human support
-        </p>
-      </div>
-
       {/* Triggers */}
       <div className="space-y-3">
         {commonTriggers.map((trigger) => {

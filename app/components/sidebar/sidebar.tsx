@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -98,6 +98,7 @@ interface SidebarProps {
 export function Sidebar({ userType, user }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { userData, getCurrentRole } = useUser();
 
   const currentRole = getCurrentRole();
@@ -131,16 +132,35 @@ export function Sidebar({ userType, user }: SidebarProps) {
     const routeAfterExperience =
       "/" + pathParts.slice(experienceIndex + 1).join("/");
 
+    // Parse the route to separate path and query params
+    const [routePath, routeQuery] = route.split("?");
+    const currentTab = searchParams.get("tab");
+
+    // For root path
     if (routeAfterExperience === "/" && route === "/") {
       return true;
     }
 
-    // Check for partial matches (e.g., /workspace/templates matches /workspace)
-    if (route !== "/" && routeAfterExperience.startsWith(route)) {
+    // If route has query params (e.g., /ai-studio?tab=handoff)
+    if (routeQuery) {
+      const routeParams = new URLSearchParams(routeQuery);
+      const routeTab = routeParams.get("tab");
+      // Match both path and tab param
+      return routeAfterExperience === routePath && currentTab === routeTab;
+    }
+
+    // For routes without query params, match exactly (not as prefix)
+    // But exclude if current URL has a tab param (means we're on a sub-tab)
+    if (routeAfterExperience === routePath) {
+      // If route is /ai-studio and we're on /ai-studio with no tab, it's active
+      // If route is /ai-studio and we're on /ai-studio?tab=context, it's NOT active
+      if (routePath === "/ai-studio" || routePath === "/workspace") {
+        return !currentTab;
+      }
       return true;
     }
 
-    return routeAfterExperience === route;
+    return false;
   };
 
   // Define navigation sections based on role

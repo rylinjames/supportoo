@@ -9,15 +9,8 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { TemplatesTab } from "./templates-tab";
 import { TeamTab } from "./team-tab";
-import { Briefcase } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 type TabId = "templates" | "team";
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: "templates", label: "Templates" },
-  { id: "team", label: "Team" },
-];
 
 export function WorkspaceView() {
   const { userData } = useUser();
@@ -54,47 +47,38 @@ export function WorkspaceView() {
     }
   }, [fullConfig, userData?.currentCompanyId]);
 
+  // Get page title and description based on active tab
+  const getPageInfo = () => {
+    if (activeTab === "team") {
+      return {
+        title: "Team",
+        description: "Manage your support team members",
+      };
+    }
+    return {
+      title: "Templates",
+      description: "Create quick reply templates to speed up your support responses",
+    };
+  };
+
+  const pageInfo = getPageInfo();
+
   return (
     <div className="h-full overflow-y-auto pb-20 lg:pb-0 text-body-sm">
-      {/* Page Header with Frosted Glass */}
-      <div className="sticky top-0 z-10 frosted-glass border-b border-border">
-        <div className="p-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Briefcase className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-h2 text-foreground">Workspace</h1>
-              <p className="text-body-sm text-muted-foreground">
-                Configure your AI assistant with company knowledge
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Pill-style Tabs */}
-        <div className="px-6 pb-4">
-          <div className="inline-flex p-1 rounded-lg bg-secondary gap-1">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "px-4 py-2 rounded-md text-sm font-medium transition-all",
-                  activeTab === tab.id
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+      {/* Page Header */}
+      <div className="sticky top-0 z-10 bg-background border-b border-border">
+        <div className="p-4">
+          <h1 className="text-h2 font-semibold text-foreground">
+            {pageInfo.title}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {pageInfo.description}
+          </p>
         </div>
       </div>
 
-      {/* Tab Content */}
-      <div className="p-6">
+      {/* Content */}
+      <div className="p-4">
         {isLoading ? (
           <div className="space-y-8">
             {/* Header skeleton */}

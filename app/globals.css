@@ -219,11 +219,11 @@
   --error-dark: #f87171;
   --info-dark: #ff6524; /* Orange accent for info */
 
-  /* Backgrounds - Dark Mode (Polished Mailoo-style) */
-  --bg-primary: #0f0f0f; /* Deeper main background */
-  --bg-secondary: #161616; /* Subtle card background */
-  --bg-tertiary: #1f1f1f; /* Hover states, inputs */
-  --bg-elevated: #1a1a1a; /* Modals, popovers - slightly elevated */
+  /* Backgrounds - Dark Mode (Matching Whop) */
+  --bg-primary: #111111; /* Main background - matches Whop */
+  --bg-secondary: #181818; /* Subtle card background */
+  --bg-tertiary: #222222; /* Hover states, inputs */
+  --bg-elevated: #1c1c1c; /* Modals, popovers - slightly elevated */
 
   /* Borders - Dark Mode (Softer, more refined) */
   --border-subtle: #1a1a1a; /* Very subtle borders */
@@ -237,24 +237,24 @@
   --text-inverse: #000000; /* Black text on light backgrounds */
 
   /* ShadCN Compatibility - Dark Mode */
-  --background: #0f0f0f;
+  --background: #111111;
   --foreground: #ffffff;
-  --card: #161616;
+  --card: #181818;
   --card-foreground: #ffffff;
-  --popover: #1a1a1a;
+  --popover: #1c1c1c;
   --popover-foreground: #ffffff;
   --primary: #ff6524;
   --primary-foreground: #ffffff;
-  --secondary: #1f1f1f;
+  --secondary: #222222;
   --secondary-foreground: #ffffff;
-  --muted: #1f1f1f;
+  --muted: #222222;
   --muted-foreground: #a1a1a1;
   --accent: #ff6524;
   --accent-foreground: #ffffff;
   --destructive: #f87171;
   --destructive-foreground: #000000;
   --border: #2a2a2a;
-  --input: #1f1f1f;
+  --input: #222222;
   --ring: #ff6524;
 
   /* ============================================
@@ -313,7 +313,7 @@
 }
 
 .dark .frosted-sidebar {
-  background: rgba(15, 15, 15, 0.9);
+  background: rgba(17, 17, 17, 0.9);
 }
 
 /* Frosted dropdown menu */

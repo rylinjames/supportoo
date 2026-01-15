@@ -11,7 +11,6 @@ import { toast } from "sonner";
 import { PersonalitySection } from "@/app/components/ai-studio/personality-section";
 import { SystemInstructionsSection } from "@/app/components/ai-studio/system-instructions-section";
 import { HandoffTriggersSection } from "@/app/components/ai-studio/handoff-triggers-section";
-import { TestAISection } from "@/app/components/ai-studio/test-ai-section";
 import { CompanyContextTab } from "@/app/components/workspace/company-context-tab";
 import { ProductsTab } from "@/app/components/workspace/products-tab";
 import { useUser } from "@/app/contexts/user-context";
@@ -257,12 +256,6 @@ export function AIStudioView() {
                   onChange={(systemInstructions) =>
                     setConfig({ ...config, systemInstructions })
                   }
-                />
-
-                <TestAISection
-                  config={config}
-                  companyContext={fullConfig?.companyContextProcessed || ""}
-                  selectedAiModel={fullConfig?.selectedAiModel || "gpt-4o-mini"}
                 />
               </div>
             )}

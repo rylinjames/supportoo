@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
+import { Pencil, FileText } from "lucide-react";
 
 interface CompanyContextTabProps {
   fullConfig: any; // Type from getFullCompanyConfig query
@@ -18,6 +19,7 @@ export function CompanyContextTab({ fullConfig }: CompanyContextTabProps) {
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Initialize content from fullConfig
   useEffect(() => {
@@ -44,6 +46,7 @@ export function CompanyContextTab({ fullConfig }: CompanyContextTabProps) {
       });
 
       setSavedContent(content);
+      setIsEditing(false);
       toast.success("Company context updated");
     } catch (error) {
       console.error("Error saving context:", error);
@@ -57,6 +60,7 @@ export function CompanyContextTab({ fullConfig }: CompanyContextTabProps) {
 
   const handleDiscard = () => {
     setContent(savedContent);
+    setIsEditing(false);
   };
 
   const wordCount = (text: string) => {
@@ -68,9 +72,56 @@ export function CompanyContextTab({ fullConfig }: CompanyContextTabProps) {
     return null;
   }
 
+  // Preview mode - collapsed view
+  if (!isEditing && savedContent) {
+    return (
+      <div className="space-y-3">
+        <div
+          className="relative rounded-lg border border-border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={() => setIsEditing(true)}
+        >
+          {/* Preview content with fade */}
+          <div className="relative max-h-[120px] overflow-hidden">
+            <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
+              {savedContent}
+            </pre>
+            {/* Fade overlay */}
+            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent" />
+          </div>
+          {/* Edit hint */}
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+            <span className="text-xs text-muted-foreground">
+              {wordCount(savedContent)} words
+            </span>
+            <Button variant="ghost" size="sm" className="gap-2 text-xs">
+              <Pencil className="h-3 w-3" />
+              Click to edit
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Empty state - no content yet
+  if (!savedContent && !isEditing) {
+    return (
+      <div
+        className="rounded-lg border border-dashed border-border p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+        onClick={() => setIsEditing(true)}
+      >
+        <FileText className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
+        <p className="text-sm text-muted-foreground mb-2">No company context added yet</p>
+        <Button variant="outline" size="sm">
+          Add Context
+        </Button>
+      </div>
+    );
+  }
+
+  // Editing mode - full textarea
   return (
     <div className="space-y-4">
-      {/* Textarea */}
       <div className="relative">
         <Textarea
           value={content}
@@ -84,23 +135,22 @@ Include:
 • Company policies and procedures
 • Frequently asked questions
 • Contact information and support hours`}
+          autoFocus
         />
         <div className="absolute bottom-3 right-3 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
           {wordCount(content)} words
         </div>
       </div>
 
-      {/* Actions - only show when there are changes */}
-      {hasChanges && (
-        <div className="flex items-center gap-3">
-          <Button onClick={handleSave} size="sm" disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save"}
-          </Button>
-          <Button onClick={handleDiscard} variant="ghost" size="sm" disabled={isSaving}>
-            Discard
-          </Button>
-        </div>
-      )}
+      {/* Actions */}
+      <div className="flex items-center gap-3">
+        <Button onClick={handleSave} size="sm" disabled={isSaving || !content.trim()}>
+          {isSaving ? "Saving..." : "Save"}
+        </Button>
+        <Button onClick={handleDiscard} variant="ghost" size="sm" disabled={isSaving}>
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 }

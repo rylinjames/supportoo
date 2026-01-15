@@ -191,7 +191,7 @@ export function Sidebar({ userType, user }: SidebarProps) {
     const workspaceSection: NavSection = {
       id: "workspace",
       label: "Workspace",
-      defaultExpanded: false,
+      defaultExpanded: true,
       items: [
         { id: "templates", icon: FileText, label: "Templates", route: "/workspace" },
         { id: "team", icon: Users, label: "Team", route: "/workspace?tab=team" },

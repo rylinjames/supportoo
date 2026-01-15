@@ -183,14 +183,6 @@ export function Sidebar({ userType, user }: SidebarProps) {
         { id: "personality", icon: Sparkles, label: "Personality & Tone", route: "/ai-studio" },
         { id: "company-context", icon: Building2, label: "Company Context", route: "/ai-studio?tab=context" },
         { id: "handoff", icon: ArrowRightLeft, label: "Handoff Triggers", route: "/ai-studio?tab=handoff" },
-      ],
-    };
-
-    // Customer Test - standalone item
-    const customerTestSection: NavSection = {
-      id: "customer-test",
-      label: null,
-      items: [
         { id: "customer-test", icon: Eye, label: "Customer Test", route: "/customer-test" },
       ],
     };
@@ -220,11 +212,11 @@ export function Sidebar({ userType, user }: SidebarProps) {
     // Role-based navigation
     // Note: Billing, Settings, Help, More Apps moved to profile dropdown
     if (effectiveUserType === "admin") {
-      return [supportTicketsSection, aiStudioSection, customerTestSection, workspaceSection, analyticsSection];
+      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection];
     }
 
     if (effectiveUserType === "manager") {
-      return [supportTicketsSection, aiStudioSection, customerTestSection, workspaceSection, analyticsSection];
+      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection];
     }
 
     if (effectiveUserType === "viewer") {
@@ -241,10 +233,10 @@ export function Sidebar({ userType, user }: SidebarProps) {
       ];
     }
 
-    // Support role - simplified view (no AI config access)
+    // Support role - gets access to AI Studio
     return [
       supportTicketsSection,
-      customerTestSection,
+      aiStudioSection,
     ];
   };
 

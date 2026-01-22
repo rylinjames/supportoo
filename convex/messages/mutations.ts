@@ -211,25 +211,10 @@ export const sendCustomerMessage = mutation({
     const now = Date.now();
     let extraMessages = 0;
 
-    // ⭐ CRITICAL: Auto-unresolve if conversation was resolved
     if (conversation.status === "resolved") {
-      await ctx.db.patch(args.conversationId, {
-        status: "ai_handling", // Back to AI
-        participatingAgents: [], // Clear agents
-        updatedAt: now,
-      });
-
-      // System message for unresolve
-      await ctx.db.insert("messages", {
-        conversationId: args.conversationId,
-        companyId: conversation.companyId,
-        role: "system",
-        content: "Your conversation has been reopened.",
-        timestamp: now - 1,
-        systemMessageType: "handoff",
-      });
-
-      extraMessages = 1;
+      throw new Error(
+        "Conversation is resolved. Please start a new conversation to continue."
+      );
     }
 
     // Create customer message

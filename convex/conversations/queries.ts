@@ -49,8 +49,8 @@ export const getLatestTestConversation = query({
 /**
  * Get customer's THE ONE conversation
  *
- * Returns the single conversation for this customer (or null if doesn't exist).
- * Each customer has exactly ONE conversation that persists forever.
+ * Returns the latest active (non-resolved) conversation for this customer,
+ * or null if none exist.
  */
 export const getCustomerConversation = query({
   args: {
@@ -61,13 +61,18 @@ export const getCustomerConversation = query({
     const customer = await ctx.db.get(customerId);
     if (!customer) return null;
 
-    // Get THE conversation (only one per customer in this company)
-    const conversation = await ctx.db
+    // Get the latest active conversation (non-resolved) for this customer
+    const conversations = await ctx.db
       .query("conversations")
       .withIndex("by_company_customer", (q) =>
         q.eq("companyId", companyId).eq("customerId", customerId)
       )
-      .first();
+      .order("desc")
+      .collect();
+
+    const conversation = conversations.find(
+      (conv) => conv.status !== "resolved"
+    );
 
     if (!conversation) return null;
 

@@ -21,9 +21,27 @@ const SOUND_URLS: Record<SoundType, string> = {
   error: 'data:audio/wav;base64,UklGRoQBAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWABAACDQ4OCgoKCgYGBgYCAgIB/f39/fn5+fn19fX18fHx8e3t7e3p6enp5eXl5eHh4eHd3d3d2dnZ2dXV1dXR0dHRzc3NzcnJycnFxcXFwcHBwb29vb25ubm5tbW1tbGxsbGtra2tqampqaWlpaWhpaGhnZ2dnZmZmZmVlZWVkZGRkY2NjY2JiYmJhYWFhYGBgYGFhYWFiYmJiY2NjY2RkZGRlZWVlZmZmZmdnZ2doaWhpaWlpaWpqamtra2tsbGxsbW1tbW5ubm5vb29vcHBwcHFxcXFycnJyc3Nzc3R0dHR1dXV1dnZ2dnd3d3d4eHh4eXl5eXp6enp7e3t7fHx8fH19fX1+fn5+f39/f4CAgICBgYGBgoKCgoODg4OEhISEhYWFhYaGhoaHh4eHiIiIiImJiYmKioqKi4uLi4yMjIyNjY2Njo6Ojg=='
 };
 
+const getStoredBoolean = (key: string, fallback: boolean) => {
+  if (typeof window === "undefined") return fallback;
+  const stored = localStorage.getItem(key);
+  if (stored === null) return fallback;
+  return stored === "true";
+};
+
+const getStoredNumber = (key: string, fallback: number) => {
+  if (typeof window === "undefined") return fallback;
+  const stored = localStorage.getItem(key);
+  const parsed = stored ? Number(stored) : NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 export function useSoundNotifications() {
-  const [enabled, setEnabled] = useState(true);
-  const [volume, setVolume] = useState(0.3); // Lower default volume for gentler sound
+  const [enabled, setEnabled] = useState(() =>
+    getStoredBoolean("soundNotifications", true)
+  );
+  const [volume, setVolume] = useState(() =>
+    getStoredNumber("soundVolume", 0.3)
+  ); // Lower default volume for gentler sound
   const audioRefs = useRef<Record<SoundType, HTMLAudioElement | null>>({
     newMessage: null,
     messageSent: null,
@@ -36,23 +54,9 @@ export function useSoundNotifications() {
     Object.entries(SOUND_URLS).forEach(([type, url]) => {
       const audio = new Audio(url);
       audio.volume = volume;
+      audio.muted = !enabled;
       audioRefs.current[type as SoundType] = audio;
     });
-
-    // Load settings from localStorage
-    const savedEnabled = localStorage.getItem('soundNotifications');
-    const savedVolume = localStorage.getItem('soundVolume');
-
-    if (savedEnabled !== null) {
-      setEnabled(savedEnabled === 'true');
-    }
-
-    if (savedVolume !== null) {
-      const vol = parseFloat(savedVolume);
-      if (!isNaN(vol)) {
-        setVolume(vol);
-      }
-    }
 
     return () => {
       // Cleanup audio elements
@@ -77,6 +81,15 @@ export function useSoundNotifications() {
 
   // Update enabled state
   useEffect(() => {
+    Object.values(audioRefs.current).forEach(audio => {
+      if (audio) {
+        audio.muted = !enabled;
+        if (!enabled) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
+      }
+    });
     localStorage.setItem('soundNotifications', enabled.toString());
   }, [enabled]);
 

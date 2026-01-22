@@ -1126,7 +1126,7 @@ export function ConversationDetail({
                     onKeyDown={handleKeyPress}
                     placeholder={
                       conversation.status === "resolved"
-                        ? "Conversation is resolved - customer can send a message to reopen"
+                        ? "Conversation is resolved - customer must start a new chat to continue"
                         : "Type a message... (Press / for quick replies)"
                     }
                     disabled={conversation.status === "resolved"}
@@ -1269,8 +1269,8 @@ export function ConversationDetail({
             <AlertDialogTitle>Mark as Resolved</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to mark this conversation as resolved?
-              Support staff will no longer be able to send messages until the
-              customer restarts the conversation.
+              Support staff will no longer be able to send messages. The
+              customer will need to start a new chat to continue.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

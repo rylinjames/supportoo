@@ -18,17 +18,22 @@ export const createConversation = mutation({
   handler: async (ctx, { companyId, customerId }) => {
     const now = Date.now();
 
-    // Check if customer already has an active conversation
-    const existingConversation = await ctx.db
+    // Check if customer already has an active (non-resolved) conversation
+    const existingConversations = await ctx.db
       .query("conversations")
       .withIndex("by_company_customer", (q) =>
         q.eq("companyId", companyId).eq("customerId", customerId)
       )
-      .first();
+      .order("desc")
+      .collect();
 
-    // If conversation exists, return it
-    if (existingConversation) {
-      return existingConversation._id;
+    const activeConversation = existingConversations.find(
+      (conv) => conv.status !== "resolved"
+    );
+
+    // If an active conversation exists, return it
+    if (activeConversation) {
+      return activeConversation._id;
     }
 
     // Create new conversation
@@ -82,11 +87,16 @@ export const createCustomerConversation = mutation({
         .withIndex("by_company_customer", (q) =>
           q.eq("companyId", companyId).eq("customerId", customerId)
         )
-        .first();
+        .order("desc")
+        .collect();
 
-      if (existing) {
-        console.log("✅ Found existing conversation:", existing._id);
-        return existing._id;
+      const activeConversation = existing.find(
+        (conv) => conv.status !== "resolved"
+      );
+
+      if (activeConversation) {
+        console.log("✅ Found existing active conversation:", activeConversation._id);
+        return activeConversation._id;
       }
       console.log("🆕 No existing conversation found for real customer");
     }
@@ -99,11 +109,16 @@ export const createCustomerConversation = mutation({
         .withIndex("by_company_customer", (q) =>
           q.eq("companyId", companyId).eq("customerId", customerId)
         )
-        .first();
+        .order("desc")
+        .collect();
 
-      if (existing) {
-        console.log("✅ Found existing conversation for test customer:", existing._id);
-        return existing._id;
+      const activeConversation = existing.find(
+        (conv) => conv.status !== "resolved"
+      );
+
+      if (activeConversation) {
+        console.log("✅ Found existing active conversation for test customer:", activeConversation._id);
+        return activeConversation._id;
       }
       console.log("🆕 No existing conversation found for test customer");
     }

@@ -12,6 +12,49 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+type IfThenRule = {
+  condition: string;
+  response: string;
+};
+
+function extractIfThenRules(context: string): IfThenRule[] {
+  if (!context) return [];
+
+  const rules: IfThenRule[] = [];
+  const lines = context.split(/\r?\n/);
+  const rulePattern = /^\s*(?:[-*]\s*)?if\s+(.+?)\s*,?\s*then\s+(.+)\s*$/i;
+
+  for (const line of lines) {
+    const match = line.match(rulePattern);
+    if (!match) continue;
+
+    const condition = match[1].replace(/\s+/g, " ").trim();
+    const response = match[2].replace(/\s+/g, " ").trim();
+
+    if (condition.length < 3 || response.length === 0) continue;
+    rules.push({ condition, response });
+  }
+
+  return rules;
+}
+
+function findMatchingRule(rules: IfThenRule[], message: string): IfThenRule | null {
+  if (!message || rules.length === 0) return null;
+
+  const messageLower = message.toLowerCase();
+  const sorted = [...rules].sort(
+    (a, b) => b.condition.length - a.condition.length
+  );
+
+  for (const rule of sorted) {
+    if (messageLower.includes(rule.condition.toLowerCase())) {
+      return rule;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Generate AI response using Chat Completions API
  */
@@ -189,6 +232,51 @@ export const generateChatResponse = action({
           length: companyContext.length,
           preview: companyContext.substring(0, 100) + "..."
         });
+      }
+
+      // Short-circuit: Apply IF/THEN rules from company context before calling OpenAI
+      const ifThenRules = extractIfThenRules(companyContext);
+      const matchedRule = findMatchingRule(
+        ifThenRules,
+        triggeringMessage.content
+      );
+
+      if (matchedRule) {
+        console.log("✅ IF/THEN rule matched:", matchedRule.condition);
+
+        const ruleMessageId = await ctx.runMutation(
+          api.messages.mutations.createMessage,
+          {
+            conversationId,
+            content: matchedRule.response,
+            role: "ai",
+            aiModel: "if_then_rules",
+            tokensUsed: 0,
+            processingTime: 0,
+          }
+        );
+
+        aiMessageCreated = true;
+
+        // Clear AI processing flag
+        try {
+          await ctx.runMutation(api.conversations.mutations.setAiProcessing, {
+            conversationId,
+            isProcessing: false,
+          });
+        } catch (flagError) {
+          console.warn("Failed to clear processing flag:", flagError);
+        }
+
+        return {
+          success: true,
+          response: matchedRule.response,
+          messageId: ruleMessageId,
+          shouldHandoff: false,
+          handoffReason: "",
+          ruleMatched: matchedRule.condition,
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        };
       }
 
       // Build products context with pricing from plans

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@/app/contexts/user-context";
@@ -73,6 +74,8 @@ const getInitials = (name: string) => {
 };
 
 export function TeamTab() {
+  const params = useParams();
+  const experienceId = params.experienceId as string;
   const { userData, isLoading, getCurrentRole } = useUser();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -127,6 +130,7 @@ export function TeamTab() {
             role: actualRole as "admin" | "support",
             companyId: userData.currentCompanyId as Id<"companies">,
             callerWhopUserId: userData.user.whopUserId,
+            experienceId,
           });
 
           if (result.notificationSent) {
@@ -148,6 +152,7 @@ export function TeamTab() {
           role: actualRole as "admin" | "support",
           companyId: userData.currentCompanyId as Id<"companies">,
           callerWhopUserId: userData.user.whopUserId,
+          experienceId,
         });
 
         const displayName = result.displayName || manualUsername;

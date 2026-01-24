@@ -805,6 +805,22 @@ export const onboardUser = action({
             );
           }
         } else {
+          // New user - check if they should be allowed to join
+          // IMPORTANT: Only auto-add if:
+          // 1. First admin creating the company (isFirstAdmin)
+          // 2. Customer with valid membership (role === "customer")
+          // Team members (admin/support based on Whop access) must be explicitly invited
+
+          if (!isFirstAdmin && role !== "customer") {
+            // Team member trying to access without being invited
+            console.log(`[onboardUser] New user ${whopUserId} has Whop team access but was not invited`);
+            return {
+              success: false,
+              redirectTo: `/experiences/${experienceId}/not-invited`,
+              error: "You have not been invited to this team yet. Please ask the team owner to add you.",
+            };
+          }
+
           // Create new user (without companyId/role - these go in junction table)
           const userId = await ctx.runMutation(api.users.sync.createUser, {
             whopUserId,
@@ -866,15 +882,30 @@ export const onboardUser = action({
         );
 
         if (!existingRelationship) {
-          // User exists but not in this company - add them
-          await ctx.runMutation(
-            api.users.multi_company_helpers.createUserCompanyRelationship,
-            {
-              userId: existingUser._id,
-              companyId: company._id,
-              role,
-            }
-          );
+          // User exists but not in this company
+          // IMPORTANT: Only auto-add CUSTOMERS, not team members
+          // Team members (admin/support) must be explicitly invited by the owner
+          // This prevents random Whop mods from auto-joining without invitation
+          if (role === "customer") {
+            // Customers with valid membership can be auto-added
+            await ctx.runMutation(
+              api.users.multi_company_helpers.createUserCompanyRelationship,
+              {
+                userId: existingUser._id,
+                companyId: company._id,
+                role,
+              }
+            );
+          } else {
+            // Team member (admin/support based on Whop access) but NOT invited
+            // Block access - they need to be invited by the owner
+            console.log(`[onboardUser] User ${whopUserId} has Whop team access but was not invited to this company`);
+            return {
+              success: false,
+              redirectTo: `/experiences/${experienceId}/not-invited`,
+              error: "You have not been invited to this team yet. Please ask the team owner to add you.",
+            };
+          }
         }
 
         user = existingUser;

@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { BotMessageSquare, Eye, Check } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -16,6 +16,31 @@ import {
 } from "@/components/ui/tooltip";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+// Helper to convert URLs in text to clickable links
+function linkifyText(text: string): React.ReactNode[] {
+  const urlRegex = /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g;
+  const parts = text.split(urlRegex);
+
+  return parts.map((part, index) => {
+    if (urlRegex.test(part)) {
+      // Reset regex lastIndex after test
+      urlRegex.lastIndex = 0;
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline hover:no-underline break-all"
+        >
+          {part.length > 50 ? part.substring(0, 47) + "..." : part}
+        </a>
+      );
+    }
+    return part;
+  });
+}
 
 export type MessageType = "customer" | "ai" | "agent" | "system";
 
@@ -271,7 +296,7 @@ export function MessageBubble({
                 </div>
               )}
               {message.content && (
-                <p className="text-body-sm">{message.content}</p>
+                <p className="text-body-sm">{linkifyText(message.content)}</p>
               )}
             </div>
             <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground mt-1">
@@ -365,7 +390,7 @@ export function MessageBubble({
                 <div className="mb-2">{renderAttachment()}</div>
               )}
               {message.content && (
-                <p className="text-body-sm">{message.content}</p>
+                <p className="text-body-sm">{linkifyText(message.content)}</p>
               )}
             </div>
             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">

@@ -9,6 +9,7 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { getWhopSdk, getWhopConfig } from "../lib/whop";
+import { api } from "../_generated/api";
 
 /**
  * Send handoff notification
@@ -247,7 +248,6 @@ export const sendHandoffRequestNotification = action({
     reason: v.string(),
   },
   handler: async (ctx, { conversationId, reason }) => {
-    const { api } = await import("../_generated/api");
     const whopSdk = getWhopSdk();
 
     try {

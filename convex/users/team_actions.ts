@@ -1,6 +1,6 @@
 /**
  * Team Management Actions
- *
+ * 
  * Actions that interact with external APIs for team management
  */
 
@@ -10,47 +10,6 @@ import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
-import { getWhopSdk } from "../lib/whop";
-
-/**
- * Look up a user in the Whop authorized team members by username
- * Returns their actual whopUserId if found, null otherwise
- */
-async function findWhopUserByUsername(
-  whopCompanyId: string,
-  username: string
-): Promise<{ whopUserId: string; displayName: string } | null> {
-  try {
-    const whopSdk = getWhopSdk();
-    console.log(`[findWhopUserByUsername] Looking for @${username} in company ${whopCompanyId}`);
-
-    const result = await whopSdk.companies.listAuthorizedUsers({
-      companyId: whopCompanyId,
-    });
-
-    const authorizedUsers = result?.authorizedUsers || [];
-    console.log(`[findWhopUserByUsername] Found ${authorizedUsers.length} authorized users`);
-
-    // Find user by username (case-insensitive)
-    const foundUser = authorizedUsers.find(
-      (u: any) => u.username?.toLowerCase() === username.toLowerCase()
-    );
-
-    if (foundUser) {
-      console.log(`[findWhopUserByUsername] Found @${username}: ${foundUser.id} (${foundUser.name})`);
-      return {
-        whopUserId: foundUser.id,
-        displayName: foundUser.name || username,
-      };
-    }
-
-    console.log(`[findWhopUserByUsername] @${username} not found in authorized users`);
-    return null;
-  } catch (error) {
-    console.error(`[findWhopUserByUsername] Error looking up user:`, error);
-    return null;
-  }
-}
 
 /**
  * Add team member with Whop verification
@@ -110,30 +69,13 @@ export const addTeamMemberWithVerification = action({
       whopUserId = existingUser.whopUserId;
       displayName = existingUser.displayName;
       isPendingUser = false;
-      console.log("Found existing user in DB:", { whopUserId, displayName });
+      console.log("Found existing user:", { whopUserId, displayName });
     } else {
-      // User doesn't exist in our DB - try to find them in Whop's authorized users
-      // This allows us to get their real whopUserId even if they haven't used our app
-      const whopCompanyId = company?.whopCompanyId;
-      let whopUserLookup = null;
-
-      if (whopCompanyId) {
-        whopUserLookup = await findWhopUserByUsername(whopCompanyId, cleanUsername);
-      }
-
-      if (whopUserLookup) {
-        // Found in Whop's team - use their real whopUserId
-        whopUserId = whopUserLookup.whopUserId;
-        displayName = whopUserLookup.displayName;
-        isPendingUser = false; // Not pending - we have their real ID!
-        console.log("Found user in Whop team:", { whopUserId, displayName });
-      } else {
-        // Not found anywhere - create pending user
-        whopUserId = `pending_${cleanUsername}_${Date.now()}`;
-        displayName = cleanUsername;
-        isPendingUser = true;
-        console.log("Creating pending user:", { whopUserId, displayName });
-      }
+      // User doesn't exist or is pending - create pending user
+      whopUserId = `pending_${cleanUsername}_${Date.now()}`;
+      displayName = cleanUsername;
+      isPendingUser = true;
+      console.log("Creating pending user:", { whopUserId, displayName });
     }
 
     // STEP 2: Call the mutation to add the team member

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation } from "../_generated/server";
+import { api } from "../_generated/api";
 
 /**
  * CONVERSATIONS MUTATIONS
@@ -182,6 +183,16 @@ export const requestHumanSupport = mutation({
       timestamp: now,
       systemMessageType: "handoff",
     });
+
+    // Notify support agents that a customer needs help
+    await ctx.scheduler.runAfter(
+      0,
+      api.notifications.whop.sendHandoffRequestNotification,
+      {
+        conversationId,
+        reason: "Customer requested human support",
+      }
+    );
 
     return { success: true };
   },

@@ -313,6 +313,45 @@ async function getCompanyFromExperience(
 }
 
 /**
+ * Check if user is in the authorized team members list
+ *
+ * This is a secondary check to catch cases where checkAccess returns "customer"
+ * but the user is actually a team member (e.g., a mod who also has a customer membership).
+ * Uses listAuthorizedUsers which returns the actual team member list.
+ */
+async function isUserInAuthorizedTeam(
+  whopUserId: string,
+  whopCompanyId: string
+): Promise<{ isTeamMember: boolean; whopRole: string | null }> {
+  try {
+    const whopSdk = getWhopSdk();
+    console.log(`[isUserInAuthorizedTeam] Checking if ${whopUserId} is in team for company ${whopCompanyId}`);
+
+    const result = await whopSdk.companies.listAuthorizedUsers({
+      companyId: whopCompanyId,
+    });
+
+    const authorizedUsers = result?.authorizedUsers || [];
+    console.log(`[isUserInAuthorizedTeam] Found ${authorizedUsers.length} authorized users`);
+
+    // Find this user in the team members list
+    const teamMember = authorizedUsers.find((u: any) => u.id === whopUserId);
+
+    if (teamMember) {
+      console.log(`[isUserInAuthorizedTeam] User ${whopUserId} IS a team member with role: ${teamMember.role}`);
+      return { isTeamMember: true, whopRole: teamMember.role };
+    }
+
+    console.log(`[isUserInAuthorizedTeam] User ${whopUserId} is NOT in the team members list`);
+    return { isTeamMember: false, whopRole: null };
+  } catch (error) {
+    console.error(`[isUserInAuthorizedTeam] Error checking team membership:`, error);
+    // If API fails, assume not a team member (safer - they can be invited)
+    return { isTeamMember: false, whopRole: null };
+  }
+}
+
+/**
  * Check user's access level via Whop API with retry logic
  *
  * Uses @whop/sdk REST API with COMPANY ID (not experience ID).
@@ -721,7 +760,7 @@ export const onboardUser = action({
       // This is the AUTHORITATIVE check - uses @whop/sdk REST API with company ID
       // Returns "admin" for team members, "customer" for members, "no_access" otherwise
       // Uses retry logic with DB cache fallback (NOT viewType which is unreliable)
-      const accessLevel = await checkWhopAccessLevel(whopUserId, whopCompanyId, ctx);
+      let accessLevel = await checkWhopAccessLevel(whopUserId, whopCompanyId, ctx);
       console.log(`[onboardUser] Whop API access level: ${accessLevel}`);
 
       if (accessLevel === "no_access") {
@@ -730,6 +769,17 @@ export const onboardUser = action({
           redirectTo: `/experiences/${experienceId}/no-access`,
           error: "You don't have access to this company.",
         };
+      }
+
+      // Step 5.5: IMPORTANT - Double-check team membership if accessLevel is "customer"
+      // The checkAccess API can return "customer" for users who are BOTH team members AND customers
+      // (e.g., a mod who also purchased a product). We need to verify against listAuthorizedUsers.
+      if (accessLevel === "customer") {
+        const teamCheck = await isUserInAuthorizedTeam(whopUserId, whopCompanyId);
+        if (teamCheck.isTeamMember) {
+          console.log(`[onboardUser] ⚠️ User ${whopUserId} was marked as "customer" but IS a team member (${teamCheck.whopRole}). Upgrading accessLevel to "admin".`);
+          accessLevel = "admin"; // Treat them as a team member
+        }
       }
 
       // Step 6: Determine user's role in our app

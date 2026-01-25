@@ -23,16 +23,17 @@ function linkifyText(text: string): React.ReactNode[] {
   const parts = text.split(urlRegex);
 
   return parts.map((part, index) => {
-    if (urlRegex.test(part)) {
-      // Reset regex lastIndex after test
-      urlRegex.lastIndex = 0;
+    // Use a fresh regex test without global flag for reliable matching
+    const isUrl = /^https?:\/\/[^\s<]+[^<.,:;"')\]\s]$/.test(part);
+    if (isUrl) {
       return (
         <a
           key={index}
           href={part}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary underline hover:no-underline break-all"
+          className="text-primary underline hover:no-underline break-all cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
         >
           {part.length > 50 ? part.substring(0, 47) + "..." : part}
         </a>

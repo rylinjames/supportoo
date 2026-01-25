@@ -549,8 +549,8 @@ ${company.aiSystemPrompt || ""}`;
       const startTime = Date.now();
       
       // Log the exact request being sent
-      // Use company's selected model with fallback to gpt-4o
-      const modelToUse = company.selectedAiModel || "gpt-4o";
+      // Use company's selected model with fallback to gpt-5.2 (400K context)
+      const modelToUse = company.selectedAiModel || "gpt-5.2";
       console.log("🚀 OpenAI Request Details:", {
         model: modelToUse,
         systemMessageLength: systemMessage.length,
@@ -567,7 +567,7 @@ ${company.aiSystemPrompt || ""}`;
         model: modelToUse,
         messages: chatMessages,
         temperature: 0.7,
-        max_tokens: getMaxTokens(company.aiResponseLength || "medium"),
+        max_completion_tokens: getMaxTokens(company.aiResponseLength || "medium"),
         presence_penalty: 0.1,
         frequency_penalty: 0.1,
       });
@@ -775,7 +775,7 @@ ${company.aiSystemPrompt || ""}`;
         conversationId,
         content: response,
         role: "ai",
-        aiModel: company.selectedAiModel || "gpt-4",
+        aiModel: company.selectedAiModel || "gpt-5.2",
         processingTime,
         tokensUsed: usage?.total_tokens,
       });
@@ -801,7 +801,7 @@ ${company.aiSystemPrompt || ""}`;
         await ctx.runMutation(api.usage.mutations.trackAIResponse, {
           conversationId,
           tokensUsed: (usage?.total_tokens || 0),
-          aiModel: company.selectedAiModel || "gpt-4",
+          aiModel: company.selectedAiModel || "gpt-5.2",
           experienceId: "exp_unknown", // TODO: Get this from conversation or context
         });
       } catch (usageError) {
@@ -927,7 +927,7 @@ You are a customer support representative. Your responses should be:
 - Never mention that you're an AI or created by OpenAI`;
 
     const completion = await openai.chat.completions.create({
-      model: company.selectedAiModel || "gpt-4",
+      model: company.selectedAiModel || "gpt-5.2",
       messages: [
         {
           role: "system",
@@ -939,7 +939,7 @@ You are a customer support representative. Your responses should be:
         },
       ],
       temperature: 0.7,
-      max_tokens: 150,
+      max_completion_tokens: 1000,
     });
 
     return {
@@ -952,16 +952,17 @@ You are a customer support representative. Your responses should be:
 
 // Helper function to get max tokens based on response length setting
 // Matches schema: "brief" | "medium" | "detailed"
+// Note: GPT-5.2 uses reasoning tokens that count toward the limit, so we need higher values
 function getMaxTokens(responseLength: string): number {
   switch (responseLength) {
     case "brief":
-      return 100;
+      return 500;
     case "medium":
-      return 200;
+      return 1000;
     case "detailed":
-      return 350;
+      return 2000;
     default:
-      return 200;
+      return 1000;
   }
 }
 

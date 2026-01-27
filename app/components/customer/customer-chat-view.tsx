@@ -1,15 +1,13 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@/app/contexts/user-context";
-import { CustomerChatHeader } from "./customer-chat-header";
 import { CustomerEmptyState } from "./customer-empty-state";
 import { CustomerChatDetail } from "./customer-chat-detail";
 import { MessageListSkeleton } from "../support/message-skeleton";
 import { MobileViewport } from "./mobile-viewport";
 import { Id } from "@/convex/_generated/dataModel";
-import { toast } from "sonner";
 
 interface CustomerChatViewProps {
   experienceId: string;
@@ -24,10 +22,6 @@ export function CustomerChatView({
 
   // In dev mode, use forced customer ID
   const effectiveUserId = forceCustomerId || userData?.user._id;
-  const requestHumanSupport = useMutation(
-    api.conversations.mutations.requestHumanSupport
-  );
-
   const conversation = useQuery(
     api.conversations.queries.getCustomerConversation,
     effectiveUserId && userData?.currentCompanyId
@@ -37,20 +31,6 @@ export function CustomerChatView({
         }
       : "skip"
   );
-
-  const handleRequestHumanSupport = async () => {
-    if (!conversation || !effectiveUserId) return;
-
-    try {
-      await requestHumanSupport({
-        conversationId: conversation._id as Id<"conversations">,
-        customerId: effectiveUserId as Id<"users">,
-      });
-      toast.success("Human support requested");
-    } catch (error) {
-      toast.error("Failed to request human support");
-    }
-  };
 
   if (userLoading || (!userData && !forceCustomerId)) {
     return (
@@ -63,12 +43,6 @@ export function CustomerChatView({
   return (
     <div className="flex flex-col h-full bg-background">
       <MobileViewport />
-      {/* Always show header on mobile, or when conversation exists on desktop */}
-      <CustomerChatHeader
-        onRequestHumanSupport={handleRequestHumanSupport}
-        showMenu={true}
-        companyId={userData?.currentCompanyId || ""}
-      />
 
       {conversation === undefined ? (
         // Loading state - show MessageListSkeleton

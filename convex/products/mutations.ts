@@ -194,3 +194,20 @@ export const deleteAllCompanyProducts = mutation({
     return products.length;
   },
 });
+
+/**
+ * Toggle whether a product is included in AI context
+ */
+export const toggleProductAIInclusion = mutation({
+  args: {
+    productId: v.id("products"),
+    includeInAI: v.boolean(),
+  },
+  handler: async (ctx, { productId, includeInAI }) => {
+    await ctx.db.patch(productId, {
+      includeInAI,
+      updatedAt: Date.now(),
+    });
+    return { success: true };
+  },
+});

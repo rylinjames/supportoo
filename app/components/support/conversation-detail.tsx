@@ -32,9 +32,7 @@ import { TypingIndicator } from "./typing-indicator";
 import { CustomerProfileModal } from "./customer-profile-modal";
 import { EnhancedQuickReplyPicker } from "./enhanced-quick-reply-picker";
 import { InternalNotes } from "./internal-notes";
-import { AgentPhrasesManager } from "./agent-phrases-manager";
 import type { QuickReplyTemplate } from "./quick-reply-picker";
-import { KeyboardShortcutsDialog } from "@/app/components/ui/keyboard-shortcuts-dialog";
 import { MessageListSkeleton } from "./message-skeleton";
 import { UserPresenceAvatar } from "@/components/animate-ui/user-presence-avatar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -193,28 +191,15 @@ export function ConversationDetail({
   // Switch from pre-fetched to live messages when live messages are available
   useEffect(() => {
     if (liveMessages && liveMessages.length > 0) {
-      // Check if we have new messages (from customers)
-      if (liveMessages.length > previousMessageCountRef.current) {
-        // Check the newest messages to see if any are from customers
-        const newMessageCount = liveMessages.length - previousMessageCountRef.current;
-        const newestMessages = liveMessages.slice(-newMessageCount);
-        
-        // Play sound for new customer messages (not our own messages)
-        const hasNewCustomerMessage = newestMessages.some(
-          msg => msg.role === 'customer' && 
-          msg.timestamp > (Date.now() - 5000) // Message is from last 5 seconds
-        );
-        
-        if (hasNewCustomerMessage) {
-          playSound('newMessage');
-        }
-      }
-      
+      // Don't play sound when actively viewing this conversation
+      // Sound notifications should only play when NOT viewing the ticket
+      // (e.g., in the conversation list or when tab is in background)
+
       previousMessageCountRef.current = liveMessages.length;
       setAllMessages(liveMessages);
       setHasMoreMessages(liveMessages.length === 50); // CRITICAL: Set this to show "Beginning of conversation"
     }
-  }, [liveMessages, playSound]);
+  }, [liveMessages]);
 
   // Handle older messages when they load
   useEffect(() => {
@@ -954,8 +939,6 @@ export function ConversationDetail({
               </TooltipContent>
             </Tooltip>
 
-            <KeyboardShortcutsDialog />
-
             {/* Resolve Button - Prominent! */}
             {conversation.status !== "resolved" && (
               <Button
@@ -1172,11 +1155,6 @@ export function ConversationDetail({
                         <p>Quick reply templates</p>
                       </TooltipContent>
                     </Tooltip>
-
-                    {/* Agent Phrases Manager */}
-                    <div className="ml-1">
-                      <AgentPhrasesManager />
-                    </div>
 
                     {/* Hand Back to AI - Only show if conversation is in support status */}
                     {conversation.status === "support" && (

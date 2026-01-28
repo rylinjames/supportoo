@@ -161,6 +161,51 @@ export const generateChatResponse = action({
       }
       console.log("✅ Rate limit check passed. Remaining requests:", rateLimitCheck.remainingRequests);
 
+      // 1.6 Check monthly usage limits before proceeding
+      console.log("\n📊 STEP 1.6: Checking monthly usage limits...");
+      const usageCheck = await ctx.runQuery(api.usage.queries.checkUsageLimit, {
+        companyId: conversation.companyId,
+      });
+
+      if (usageCheck.hasReachedLimit) {
+        console.warn("⚠️ Monthly usage limit reached for company:", conversation.companyId);
+        console.log("  - Current usage:", usageCheck.currentUsage);
+        console.log("  - Limit:", usageCheck.limit);
+        console.log("  - Plan:", usageCheck.planName);
+
+        // Create a user-friendly message
+        await ctx.runMutation(api.messages.mutations.createMessage, {
+          conversationId,
+          content: "AI support bot is currently not available in this Whop at the moment. A support staff will be in contact with you shortly.",
+          role: "system",
+        });
+
+        // Trigger handoff to support staff
+        try {
+          await ctx.runMutation(api.conversations.mutations.triggerHandoff, {
+            conversationId,
+            reason: "AI usage limit reached for this company",
+          });
+        } catch (handoffError) {
+          console.warn("Failed to trigger handoff:", handoffError);
+        }
+
+        // Clear processing flag
+        await ctx.runMutation(api.conversations.mutations.setAiProcessing, {
+          conversationId,
+          isProcessing: false,
+        });
+
+        return {
+          success: false,
+          error: "Usage limit reached",
+          message: `Monthly AI response limit (${usageCheck.limit}) has been reached. Please upgrade your plan or wait for the next billing cycle.`,
+          currentUsage: usageCheck.currentUsage,
+          limit: usageCheck.limit,
+        };
+      }
+      console.log("✅ Usage limit check passed. Usage:", usageCheck.currentUsage, "/", usageCheck.limit);
+
       console.log("\n📊 STEP 2: Fetching company data...");
       const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId: conversation.companyId,

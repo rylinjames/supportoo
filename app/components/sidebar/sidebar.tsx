@@ -11,7 +11,6 @@ import {
   ChevronRight,
   ChevronDown,
   MessageSquare,
-  ChartNoAxesColumn,
   LucideIcon,
   Sparkles,
   Building2,
@@ -205,7 +204,6 @@ export function Sidebar({ userType, user }: SidebarProps) {
       defaultExpanded: false,
       items: [
         { id: "usage", icon: Activity, label: "Usage", route: "/analytics/usage" },
-        { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
       ],
     };
 
@@ -227,7 +225,6 @@ export function Sidebar({ userType, user }: SidebarProps) {
           label: null,
           items: [
             { id: "usage", icon: Activity, label: "Usage", route: "/analytics/usage" },
-            { id: "insights", icon: ChartNoAxesColumn, label: "Insights", route: "/insights" },
           ],
         },
       ];

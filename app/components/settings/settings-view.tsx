@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -43,11 +42,9 @@ export function SettingsView() {
 
   // Initialize preferences from user data
   const [preferences, setPreferences] = useState<{
-    theme: "light" | "dark" | "system";
     timezone: string;
     notificationsEnabled: boolean;
   }>({
-    theme: "dark",
     timezone: detectTimezone(),
     notificationsEnabled: true,
   });
@@ -56,7 +53,6 @@ export function SettingsView() {
   useEffect(() => {
     if (fullUser) {
       setPreferences({
-        theme: (fullUser.theme || "dark") as "light" | "dark" | "system",
         timezone: fullUser.timezone || detectTimezone(),
         notificationsEnabled: fullUser.notificationsEnabled !== false,
       });
@@ -90,42 +86,6 @@ export function SettingsView() {
       toast.error("Failed to update company name");
     } finally {
       setIsSavingCompanyName(false);
-    }
-  };
-
-  // Apply theme changes
-  const handleThemeChange = async (newTheme: "light" | "dark" | "system") => {
-    if (!userData?.user?._id) return;
-
-    try {
-      await updatePreferences({
-        userId: userData.user._id as Id<"users">,
-        theme: newTheme,
-      });
-
-      // Apply theme to document root
-      const root = document.documentElement;
-      if (newTheme === "dark") {
-        root.classList.add("dark");
-      } else if (newTheme === "light") {
-        root.classList.remove("dark");
-      } else {
-        // System theme - follow OS preference
-        const prefersDark = window.matchMedia(
-          "(prefers-color-scheme: dark)"
-        ).matches;
-        if (prefersDark) {
-          root.classList.add("dark");
-        } else {
-          root.classList.remove("dark");
-        }
-      }
-
-      setPreferences({ ...preferences, theme: newTheme });
-      toast.success(`Theme changed to ${newTheme}`);
-    } catch (error) {
-      console.error("Error updating theme:", error);
-      toast.error("Failed to update theme");
     }
   };
 
@@ -180,15 +140,11 @@ export function SettingsView() {
         <div className="space-y-12">
           {isLoading ? (
             <>
-              {/* Theme Section Skeleton */}
+              {/* Company Name Section Skeleton */}
               <div className="space-y-6">
                 <Skeleton className="h-5 w-32" />
                 <Skeleton className="h-4 w-64" />
-                <div className="space-y-3">
-                  <Skeleton className="h-6 w-24" />
-                  <Skeleton className="h-6 w-24" />
-                  <Skeleton className="h-6 w-24" />
-                </div>
+                <Skeleton className="h-10 w-full max-w-md" />
               </div>
 
               {/* Notifications Section Skeleton */}
@@ -232,53 +188,6 @@ export function SettingsView() {
                       </>
                     )}
                   </Button>
-                </div>
-              </div>
-
-              {/* Theme Section */}
-              <div>
-                <div className="mb-6">
-                  <h2 className="text-h3 text-foreground">Appearance</h2>
-                  <p className="text-body-sm text-muted-foreground mt-1">
-                    Choose your preferred color scheme
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <RadioGroup
-                    value={preferences.theme}
-                    onValueChange={(v) =>
-                      handleThemeChange(v as "light" | "dark" | "system")
-                    }
-                  >
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem value="light" id="light" />
-                      <Label
-                        htmlFor="light"
-                        className="text-body-sm text-foreground font-normal cursor-pointer"
-                      >
-                        Light
-                      </Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem value="dark" id="dark" />
-                      <Label
-                        htmlFor="dark"
-                        className="text-body-sm text-foreground font-normal cursor-pointer"
-                      >
-                        Dark
-                      </Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem value="system" id="system" />
-                      <Label
-                        htmlFor="system"
-                        className="text-body-sm text-foreground font-normal cursor-pointer"
-                      >
-                        System
-                      </Label>
-                    </div>
-                  </RadioGroup>
                 </div>
               </div>
 

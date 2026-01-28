@@ -612,7 +612,10 @@ export default defineSchema({
     // Product status
     isActive: v.boolean(),
     isVisible: v.boolean(),
-    
+
+    // AI inclusion - whether AI should reference this product
+    includeInAI: v.optional(v.boolean()), // defaults to true if not set
+
     // Additional metadata
     category: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),

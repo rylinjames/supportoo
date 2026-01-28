@@ -55,7 +55,7 @@ export const getActiveProducts = query({
 
 /**
  * Get visible and active products for a company (for AI context)
- * Only returns products that are both visible AND active
+ * Only returns products that are visible, active, AND included in AI
  */
 export const getVisibleActiveProducts = query({
   args: {
@@ -69,9 +69,9 @@ export const getVisibleActiveProducts = query({
       )
       .collect();
 
-    // Filter for visible products (no compound index, so filter in-memory)
+    // Filter for visible products AND included in AI (default true if not set)
     return products
-      .filter(p => p.isVisible === true)
+      .filter(p => p.isVisible === true && p.includeInAI !== false)
       .sort((a, b) => b.updatedAt - a.updatedAt);
   },
 });

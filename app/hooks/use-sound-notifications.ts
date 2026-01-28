@@ -37,7 +37,7 @@ const getStoredNumber = (key: string, fallback: number) => {
 
 export function useSoundNotifications() {
   const [enabled, setEnabled] = useState(() =>
-    getStoredBoolean("soundNotifications", true)
+    getStoredBoolean("soundNotifications", false)
   );
   const [volume, setVolume] = useState(() =>
     getStoredNumber("soundVolume", 0.3)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Sidebar } from "@/app/components/sidebar/sidebar";
 import { UserProvider } from "@/app/contexts/user-context";
@@ -9,7 +9,6 @@ import { WhopIframeSdkProvider, useIframeSdk } from "@whop/react";
 import { useEffect, useState, useRef } from "react";
 import { verifyUserToken } from "@/components/server/whop-sdk";
 import { useParams, useRouter } from "next/navigation";
-import { MobileBottomNav } from "@/app/components/mobile/mobile-bottom-nav";
 import { Toaster } from "@/components/ui/sonner";
 import { RouteGuard } from "@/app/components/auth/route-guard";
 
@@ -257,30 +256,15 @@ const InnerLayout = ({ children }: LayoutProps) => {
               )?.role || "customer";
 
             return (
-              <>
-                {/* Desktop View */}
-                <div
-                  suppressHydrationWarning
-                  className="hidden xl:flex h-screen overflow-hidden"
-                >
-                  <Sidebar
-                    userType={userRole}
-                    user={currentUser}
-                  />
-                  <div className="flex-1 overflow-hidden bg-background">
-                    {children}
-                  </div>
+              <div className="flex h-screen overflow-hidden">
+                <Sidebar
+                  userType={userRole}
+                  user={currentUser}
+                />
+                <div className="flex-1 overflow-hidden bg-background">
+                  {children}
                 </div>
-                {/* Mobile/Tablet View */}
-                <div className="flex xl:hidden flex-col h-screen overflow-hidden">
-                  <main className="flex-1 overflow-hidden bg-background">
-                    {children}
-                  </main>
-                  {userRole !== "customer" && (
-                    <MobileBottomNav userType={userRole} user={currentUser} />
-                  )}
-                </div>
-              </>
+              </div>
             );
           })()}
         </RouteGuard>

@@ -268,7 +268,7 @@ const InnerLayout = ({ children }: LayoutProps) => {
                   userType={userRole}
                   user={currentUser}
                 />
-                <div className="flex-1 overflow-hidden bg-background max-xl:pt-14">
+                <div className="flex-1 overflow-hidden bg-background">
                   {children}
                 </div>
               </div>

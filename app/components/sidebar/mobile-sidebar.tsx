@@ -231,17 +231,16 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
 
   return (
     <div className="xl:hidden">
-      {/* Mobile Header with Hamburger */}
-      <div className="fixed top-0 left-0 right-0 z-40 h-14 bg-background border-b border-border flex items-center px-4">
-        <Sheet open={isOpen} onOpenChange={setIsOpen}>
-          <SheetTrigger asChild>
-            <button
-              className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-          </SheetTrigger>
+      {/* Floating Hamburger Button */}
+      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+        <SheetTrigger asChild>
+          <button
+            className="fixed top-3 left-3 z-50 flex h-10 w-10 items-center justify-center rounded-md bg-background border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shadow-sm"
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </SheetTrigger>
           <SheetContent side="left" className="w-[280px] p-0">
             <div className="flex flex-col h-full">
               {/* Navigation Sections */}
@@ -283,9 +282,7 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
               </div>
             </div>
           </SheetContent>
-        </Sheet>
-      </div>
-
+      </Sheet>
     </div>
   );
 }

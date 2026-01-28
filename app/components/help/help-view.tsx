@@ -11,6 +11,7 @@ import {
   HelpCircle,
   Lightbulb,
   Rocket,
+  Keyboard,
 } from "lucide-react";
 
 export function HelpView() {
@@ -39,6 +40,16 @@ export function HelpView() {
       icon: HelpCircle,
       href: "#",
     },
+  ];
+
+  const shortcuts = [
+    { keys: ["Ctrl", "Enter"], description: "Send message" },
+    { keys: ["Ctrl", "R"], description: "Mark conversation as resolved" },
+    { keys: ["Ctrl", "E"], description: "Export conversation to CSV" },
+    { keys: ["Ctrl", "Shift", "N"], description: "Toggle internal notes" },
+    { keys: ["/"], description: "Open quick reply picker (in message box)" },
+    { keys: ["Esc"], description: "Close dialogs" },
+    { keys: ["?"], description: "Show keyboard shortcuts" },
   ];
 
   const faqs = [
@@ -96,6 +107,42 @@ export function HelpView() {
               </Card>
             ))}
           </div>
+        </div>
+
+        {/* Keyboard Shortcuts */}
+        <div>
+          <h2 className="text-h3 font-medium text-foreground mb-4 flex items-center gap-2">
+            <Keyboard className="h-5 w-5 text-primary" />
+            Keyboard Shortcuts
+          </h2>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-3">
+                {shortcuts.map((shortcut, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                  >
+                    <span className="text-sm text-muted-foreground">
+                      {shortcut.description}
+                    </span>
+                    <div className="flex gap-1">
+                      {shortcut.keys.map((key, keyIndex) => (
+                        <span key={keyIndex}>
+                          <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg dark:bg-gray-600 dark:text-gray-100 dark:border-gray-500">
+                            {key}
+                          </kbd>
+                          {keyIndex < shortcut.keys.length - 1 && (
+                            <span className="mx-1 text-muted-foreground">+</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* FAQs */}

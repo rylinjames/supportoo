@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useAction } from "convex/react";
+import { useQuery, useAction, useMutation } from "convex/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Package, Clock, CheckCircle, EyeOff, Loader2 } from "lucide-react";
+import { RefreshCw, Package, Clock, EyeOff, Loader2, Bot } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
@@ -68,6 +68,19 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
   // Actions
   const syncProducts = useAction(api.products.actions.syncProducts);
   const syncPlans = useAction(api.whopPlans.actions.syncPlans);
+
+  // Mutations
+  const toggleAIInclusion = useMutation(api.products.mutations.toggleProductAIInclusion);
+
+  const handleToggleAI = async (productId: Id<"products">, currentValue: boolean) => {
+    try {
+      await toggleAIInclusion({ productId, includeInAI: !currentValue });
+      toast.success(!currentValue ? "Product will be used by AI" : "Product hidden from AI");
+    } catch (error) {
+      console.error("Failed to toggle AI inclusion:", error);
+      toast.error("Failed to update product");
+    }
+  };
 
   const handleSyncProducts = async () => {
     if (isSyncing) return;
@@ -245,6 +258,8 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {products.map((product: any) => {
             const productPlans = plansByProduct[product.whopProductId] || [];
+            // Default to true if includeInAI is not set
+            const isIncludedInAI = product.includeInAI !== false;
 
             return (
               <div
@@ -304,8 +319,26 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                   </div>
                 )}
 
+                {/* AI Inclusion Toggle */}
+                <div className="flex items-center justify-between py-2 mb-2 border-y border-border">
+                  <div className="flex items-center gap-2">
+                    <Bot className={cn(
+                      "h-4 w-4",
+                      isIncludedInAI ? "text-primary" : "text-muted-foreground"
+                    )} />
+                    <span className="text-xs text-muted-foreground">
+                      {isIncludedInAI ? "AI can reference this product" : "Hidden from AI"}
+                    </span>
+                  </div>
+                  <Switch
+                    checked={isIncludedInAI}
+                    onCheckedChange={() => handleToggleAI(product._id, isIncludedInAI)}
+                    className="scale-75"
+                  />
+                </div>
+
                 {/* Footer */}
-                <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
                     Synced {formatRelativeTime(product.lastSyncedAt)}

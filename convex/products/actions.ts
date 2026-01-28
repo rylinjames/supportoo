@@ -287,10 +287,18 @@ export const syncProducts = action({
       // Process each product
       const syncedProductIds: string[] = [];
       const errors: string[] = [];
+      let skippedCheckoutLinks = 0;
 
       for (const whopProduct of allProducts) {
         if (!whopProduct) continue; // Skip null entries
-        
+
+        // Skip checkout links (they have visibility: "quick_link")
+        if (whopProduct.visibility === "quick_link") {
+          skippedCheckoutLinks++;
+          console.log(`[syncProducts] Skipped checkout link: ${whopProduct.id} (${whopProduct.title || whopProduct.name})`);
+          continue;
+        }
+
         try {
           const productId = await syncSingleProduct(ctx, companyId, company.whopCompanyId, whopProduct);
           syncedProductIds.push(whopProduct.id);
@@ -300,6 +308,10 @@ export const syncProducts = action({
           errors.push(errorMsg);
           console.error(`[syncProducts] ${errorMsg}`);
         }
+      }
+
+      if (skippedCheckoutLinks > 0) {
+        console.log(`[syncProducts] Skipped ${skippedCheckoutLinks} checkout links`);
       }
 
       // Clean up products that no longer exist in Whop

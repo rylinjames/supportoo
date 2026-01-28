@@ -3,6 +3,7 @@
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Sidebar } from "@/app/components/sidebar/sidebar";
+import { MobileSidebar } from "@/app/components/sidebar/mobile-sidebar";
 import { UserProvider } from "@/app/contexts/user-context";
 import { WhopPaymentsProvider } from "@/app/contexts/whop-payments-context";
 import { WhopIframeSdkProvider, useIframeSdk } from "@whop/react";
@@ -257,11 +258,17 @@ const InnerLayout = ({ children }: LayoutProps) => {
 
             return (
               <div className="flex h-screen overflow-hidden">
+                {/* Desktop Sidebar - hidden on mobile */}
                 <Sidebar
                   userType={userRole}
                   user={currentUser}
                 />
-                <div className="flex-1 overflow-hidden bg-background">
+                {/* Mobile Sidebar - visible only on mobile */}
+                <MobileSidebar
+                  userType={userRole}
+                  user={currentUser}
+                />
+                <div className="flex-1 overflow-hidden bg-background max-xl:pt-14">
                   {children}
                 </div>
               </div>

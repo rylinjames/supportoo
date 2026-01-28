@@ -23,10 +23,18 @@ export const seedInitialData = mutation({
     // =====================
     console.log("📦 Seeding plans...");
 
+    // ⚠️ IMPORTANT: Update these values when deploying to a new Whop app!
+    // 1. Create plans in your Whop dashboard with proper names (e.g., "Ticketoo Pro")
+    // 2. Copy the plan IDs from Whop and paste them below
+    // 3. Update displayName to match your app branding
+
+    const APP_NAME = "Ticketoo"; // Change this for your app
+
     const freePlanId = await ctx.db.insert("plans", {
       name: "free",
+      displayName: `${APP_NAME} Free`,
       price: 0,
-      whopPlanId: "plan_Fj2mgLWut4G8J", // Whop Free plan
+      whopPlanId: undefined, // Free plan doesn't need a Whop plan ID
 
       // AI Configuration
       aiModels: ["gpt-4o-mini"],
@@ -46,8 +54,9 @@ export const seedInitialData = mutation({
 
     const proPlanId = await ctx.db.insert("plans", {
       name: "pro",
+      displayName: `${APP_NAME} Pro`,
       price: 1900, // $19 in cents
-      whopPlanId: "plan_9mdGo5MNCGo0J", // Whop Pro plan
+      whopPlanId: undefined, // TODO: Add your Whop Pro plan ID here
 
       // AI Configuration
       aiModels: ["gpt-4o-mini", "gpt-4o"],
@@ -57,8 +66,8 @@ export const seedInitialData = mutation({
       hasTemplates: true,
       hasInsights: true,
       hasPrioritySupport: true,
-      hasCustomTriggers: true, // ✅ Pro gets custom triggers!
-      hasFileAttachments: true, // ✅ Pro gets file attachments!
+      hasCustomTriggers: true,
+      hasFileAttachments: true,
 
       // Limits
       maxAgents: 10,
@@ -67,8 +76,9 @@ export const seedInitialData = mutation({
 
     const elitePlanId = await ctx.db.insert("plans", {
       name: "elite",
+      displayName: `${APP_NAME} Elite`,
       price: 4900, // $49 in cents
-      whopPlanId: "plan_8ZkuyDwyYbNos", // Whop Elite plan
+      whopPlanId: undefined, // TODO: Add your Whop Elite plan ID here
 
       // AI Configuration
       aiModels: ["gpt-4o", "gpt-4o-mini", "gpt-4"],

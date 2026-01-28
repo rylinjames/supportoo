@@ -15,9 +15,11 @@ export default defineSchema({
   // ============================================================================
   plans: defineTable({
     name: v.union(v.literal("free"), v.literal("pro"), v.literal("elite")),
+    displayName: v.optional(v.string()), // User-facing name (e.g., "Ticketoo Pro")
     price: v.number(), // Monthly price in cents
 
-    // Whop integration
+    // Whop integration - IMPORTANT: Update these when deploying to a new app!
+    // The whopPlanId must match plans created in YOUR Whop dashboard
     whopPlanId: v.optional(v.string()), // Whop's plan ID (null for free plan)
 
     // AI Configuration

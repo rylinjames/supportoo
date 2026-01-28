@@ -138,7 +138,7 @@ export const createCheckoutSession = action({
         planId: targetPlan.whopPlanId,
         targetPlanName,
         planPrice: targetPlan.price,
-        planTitle: `${targetPlanName.charAt(0).toUpperCase() + targetPlanName.slice(1)} Plan`,
+        planTitle: targetPlan.displayName || `${targetPlanName.charAt(0).toUpperCase() + targetPlanName.slice(1)} Plan`,
         checkoutSessionId: checkoutSession.id,
       };
     } catch (error) {

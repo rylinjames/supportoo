@@ -25,7 +25,7 @@ export function PlanCard({
   onAction,
 }: PlanCardProps) {
   const planName =
-    plan.name.charAt(0).toUpperCase() + plan.name.slice(1) + " Plan";
+    plan.displayName || plan.name.charAt(0).toUpperCase() + plan.name.slice(1) + " Plan";
   const priceInDollars = (plan.price / 100).toFixed(0);
 
   // Define features for each plan

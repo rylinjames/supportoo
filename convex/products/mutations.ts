@@ -213,6 +213,90 @@ export const toggleProductAIInclusion = mutation({
 });
 
 /**
+ * Exclude specific products from sync (add to blocklist)
+ *
+ * Products in the blocklist won't be synced from Whop.
+ * Also deletes any existing products with these IDs.
+ */
+export const excludeProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+    whopProductIds: v.array(v.string()),
+  },
+  handler: async (ctx, { companyId, whopProductIds }) => {
+    // Get company
+    const company = await ctx.db.get(companyId);
+    if (!company) {
+      throw new Error("Company not found");
+    }
+
+    // Merge with existing excluded IDs
+    const existingExcluded = company.excludedProductIds || [];
+    const newExcluded = [...new Set([...existingExcluded, ...whopProductIds])];
+
+    // Update company with new exclusion list
+    await ctx.db.patch(companyId, {
+      excludedProductIds: newExcluded,
+      updatedAt: Date.now(),
+    });
+
+    // Delete any existing products with these IDs
+    let deletedCount = 0;
+    for (const whopProductId of whopProductIds) {
+      const product = await ctx.db
+        .query("products")
+        .withIndex("by_company_whop_product", (q) =>
+          q.eq("companyId", companyId).eq("whopProductId", whopProductId)
+        )
+        .first();
+
+      if (product) {
+        console.log(`[excludeProducts] Deleting product: ${product.title} (${whopProductId})`);
+        await ctx.db.delete(product._id);
+        deletedCount++;
+      }
+    }
+
+    console.log(`[excludeProducts] Added ${whopProductIds.length} products to blocklist, deleted ${deletedCount} existing products`);
+
+    return {
+      excludedCount: whopProductIds.length,
+      deletedCount,
+      totalExcluded: newExcluded.length,
+    };
+  },
+});
+
+/**
+ * Remove products from exclusion list (unblock)
+ */
+export const unexcludeProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+    whopProductIds: v.array(v.string()),
+  },
+  handler: async (ctx, { companyId, whopProductIds }) => {
+    const company = await ctx.db.get(companyId);
+    if (!company) {
+      throw new Error("Company not found");
+    }
+
+    const existingExcluded = company.excludedProductIds || [];
+    const newExcluded = existingExcluded.filter(id => !whopProductIds.includes(id));
+
+    await ctx.db.patch(companyId, {
+      excludedProductIds: newExcluded,
+      updatedAt: Date.now(),
+    });
+
+    return {
+      removedCount: existingExcluded.length - newExcluded.length,
+      totalExcluded: newExcluded.length,
+    };
+  },
+});
+
+/**
  * Clean up archived and inactive products for a company
  *
  * Use this to remove old checkout links and archived products

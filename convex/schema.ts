@@ -107,6 +107,9 @@ export default defineSchema({
     onboardingCompleted: v.boolean(),
     setupWizardCompleted: v.boolean(),
 
+    // Product sync settings
+    excludedProductIds: v.optional(v.array(v.string())), // Whop product IDs to exclude from sync
+
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),

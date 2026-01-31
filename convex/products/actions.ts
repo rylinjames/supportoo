@@ -284,14 +284,28 @@ export const syncProducts = action({
         };
       }
 
+      // Get company's excluded product IDs
+      const excludedProductIds = company.excludedProductIds || [];
+      if (excludedProductIds.length > 0) {
+        console.log(`[syncProducts] Company has ${excludedProductIds.length} excluded products`);
+      }
+
       // Process each product
       const syncedProductIds: string[] = [];
       const errors: string[] = [];
       let skippedCheckoutLinks = 0;
       let skippedArchived = 0;
+      let skippedExcluded = 0;
 
       for (const whopProduct of allProducts) {
         if (!whopProduct) continue; // Skip null entries
+
+        // Skip products that are in the exclusion list
+        if (excludedProductIds.includes(whopProduct.id)) {
+          skippedExcluded++;
+          console.log(`[syncProducts] Skipped excluded product: ${whopProduct.id} (${whopProduct.title || whopProduct.name})`);
+          continue;
+        }
 
         // Skip checkout links (they have visibility: "quick_link")
         if (whopProduct.visibility === "quick_link") {
@@ -323,6 +337,9 @@ export const syncProducts = action({
       }
       if (skippedArchived > 0) {
         console.log(`[syncProducts] Skipped ${skippedArchived} archived items`);
+      }
+      if (skippedExcluded > 0) {
+        console.log(`[syncProducts] Skipped ${skippedExcluded} excluded products`);
       }
 
       // Clean up products that no longer exist in Whop

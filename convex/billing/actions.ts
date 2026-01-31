@@ -64,28 +64,14 @@ export const createCheckoutSession = action({
       throw new Error("Company not found");
     }
 
-    // 3. Get target plan (internal tier)
+    // 3. Get target plan (internal tier) with its Whop plan ID
     const targetPlan = await ctx.runQuery(api.plans.queries.getPlanByName, {
       name: targetPlanName,
     });
 
-    if (!targetPlan) {
-      throw new Error(`Target plan ${targetPlanName} not found`);
-    }
-
-    // 3b. Dynamically lookup active Whop plan for this tier
-    // This replaces the static whopPlanId on the plans table
-    const activeWhopPlan = await ctx.runQuery(
-      api.whopPlans.queries.getActivePlanForTier,
-      {
-        companyId,
-        planTier: targetPlanName,
-      }
-    );
-
-    if (!activeWhopPlan) {
+    if (!targetPlan || !targetPlan.whopPlanId) {
       throw new Error(
-        `No active Whop plan configured for "${targetPlanName}" tier. Please assign a Whop plan to this tier in Settings → Products.`
+        `Target plan ${targetPlanName} not found or not configured for purchase`
       );
     }
 
@@ -127,11 +113,11 @@ export const createCheckoutSession = action({
 
     try {
       const checkoutSession = await whopApi.payments.createCheckoutSession({
-        planId: activeWhopPlan.whopPlanId,
+        planId: targetPlan.whopPlanId,
         metadata: {
           experienceId: experienceId,
           companyId: companyId,
-          planId: activeWhopPlan.whopPlanId,
+          planId: targetPlan.whopPlanId,
           targetPlanName: targetPlanName,
           traceId: traceId,
         },
@@ -144,15 +130,15 @@ export const createCheckoutSession = action({
       console.log(
         `✅ Plan upgrade validated for ${company.name}: ${currentPlan.name} → ${targetPlanName}`
       );
-      console.log(`  Whop Plan: ${activeWhopPlan.title} (${activeWhopPlan.whopPlanId})`);
+      console.log(`  Whop Plan ID: ${targetPlan.whopPlanId}`);
       console.log(`  Checkout Session ID: ${checkoutSession.id}`);
 
       return {
         success: true,
-        planId: activeWhopPlan.whopPlanId,
+        planId: targetPlan.whopPlanId,
         targetPlanName,
-        planPrice: activeWhopPlan.initialPrice || targetPlan.price,
-        planTitle: activeWhopPlan.title || targetPlan.displayName || `${targetPlanName.charAt(0).toUpperCase() + targetPlanName.slice(1)} Plan`,
+        planPrice: targetPlan.price,
+        planTitle: targetPlan.displayName || `${targetPlanName.charAt(0).toUpperCase() + targetPlanName.slice(1)} Plan`,
         checkoutSessionId: checkoutSession.id,
       };
     } catch (error) {

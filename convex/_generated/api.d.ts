@@ -34,6 +34,7 @@ import type * as messages_mutations from "../messages/mutations.js";
 import type * as messages_queries from "../messages/queries.js";
 import type * as notifications_whop from "../notifications/whop.js";
 import type * as onboarding_actions from "../onboarding/actions.js";
+import type * as plans_migrations from "../plans/migrations.js";
 import type * as plans_queries from "../plans/queries.js";
 import type * as plans_updateModels from "../plans/updateModels.js";
 import type * as presence_mutations from "../presence/mutations.js";
@@ -107,6 +108,7 @@ declare const fullApi: ApiFromModules<{
   "messages/queries": typeof messages_queries;
   "notifications/whop": typeof notifications_whop;
   "onboarding/actions": typeof onboarding_actions;
+  "plans/migrations": typeof plans_migrations;
   "plans/queries": typeof plans_queries;
   "plans/updateModels": typeof plans_updateModels;
   "presence/mutations": typeof presence_mutations;

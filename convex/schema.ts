@@ -685,6 +685,9 @@ export default defineSchema({
     visibility: v.string(), // "visible", "hidden", "archived", "quick_link"
     isVisible: v.boolean(), // Computed from visibility
 
+    // Tier mapping - links this Whop plan to an internal subscription tier
+    planTier: v.optional(v.union(v.literal("pro"), v.literal("elite"))),
+
     // Inventory
     stock: v.optional(v.number()),
     unlimitedStock: v.optional(v.boolean()),
@@ -713,5 +716,6 @@ export default defineSchema({
     .index("by_whop_plan", ["whopPlanId"])
     .index("by_whop_product", ["whopProductId"])
     .index("by_company_whop_plan", ["companyId", "whopPlanId"])
-    .index("by_company_visible", ["companyId", "isVisible"]),
+    .index("by_company_visible", ["companyId", "isVisible"])
+    .index("by_company_tier", ["companyId", "planTier"]),
 });

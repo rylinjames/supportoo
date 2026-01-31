@@ -152,3 +152,21 @@ export const linkPlanToProduct = mutation({
     });
   },
 });
+
+/**
+ * Assign a subscription tier to a Whop plan
+ * This links a synced Whop plan to an internal subscription tier (pro/elite)
+ * Used by admin UI to configure which Whop plans map to which tiers
+ */
+export const assignPlanTier = mutation({
+  args: {
+    whopPlanId: v.id("whopPlans"),
+    planTier: v.optional(v.union(v.literal("pro"), v.literal("elite"))),
+  },
+  handler: async (ctx, { whopPlanId, planTier }) => {
+    await ctx.db.patch(whopPlanId, {
+      planTier,
+      updatedAt: Date.now(),
+    });
+  },
+});

@@ -166,3 +166,47 @@ export const getWhopPlanById = query({
       .first();
   },
 });
+
+/**
+ * Get active Whop plan for a subscription tier
+ * Used by checkout flow to dynamically find the correct Whop plan
+ * Returns the first active (visible) plan assigned to the given tier
+ */
+export const getActivePlanForTier = query({
+  args: {
+    companyId: v.id("companies"),
+    planTier: v.union(v.literal("pro"), v.literal("elite")),
+  },
+  handler: async (ctx, { companyId, planTier }) => {
+    // Get all plans for this company with this tier
+    const plans = await ctx.db
+      .query("whopPlans")
+      .withIndex("by_company_tier", (q) =>
+        q.eq("companyId", companyId).eq("planTier", planTier)
+      )
+      .collect();
+
+    // Filter to only visible (active) plans
+    const activePlans = plans.filter((p) => p.isVisible === true);
+
+    // Return the first active plan (could be extended to prefer certain criteria)
+    return activePlans[0] || null;
+  },
+});
+
+/**
+ * Get Whop plan by its Whop plan ID (global lookup)
+ * Used by webhook handler to find plan without knowing company
+ * Returns the plan with its tier assignment for internal plan lookup
+ */
+export const getWhopPlanByWhopId = query({
+  args: {
+    whopPlanId: v.string(),
+  },
+  handler: async (ctx, { whopPlanId }) => {
+    return await ctx.db
+      .query("whopPlans")
+      .withIndex("by_whop_plan", (q) => q.eq("whopPlanId", whopPlanId))
+      .first();
+  },
+});

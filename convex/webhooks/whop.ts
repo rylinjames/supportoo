@@ -81,17 +81,42 @@ export const handlePaymentSucceeded = action({
         : "  → This is a NEW SUBSCRIPTION (subscription_create)"
     );
 
-    // Step 1: Find our plan by whopPlanId
-    const plan = await ctx.runQuery(api.plans.queries.getPlanByWhopId, {
-      whopPlanId,
-    });
+    // Step 1: Find internal plan via Whop plan tier mapping
+    // First lookup the Whop plan to get its tier assignment
+    const whopPlan = await ctx.runQuery(
+      api.whopPlans.queries.getWhopPlanByWhopId,
+      { whopPlanId }
+    );
+
+    let plan;
+    if (whopPlan && whopPlan.planTier) {
+      // Use the tier-based lookup (new method)
+      plan = await ctx.runQuery(api.plans.queries.getPlanByName, {
+        name: whopPlan.planTier,
+      });
+      console.log(`  ✅ Found plan via tier mapping: ${whopPlan.planTier}`);
+    } else {
+      // Fallback to legacy direct whopPlanId lookup on plans table
+      plan = await ctx.runQuery(api.plans.queries.getPlanByWhopId, {
+        whopPlanId,
+      });
+      if (plan) {
+        console.log(`  ⚠️ Found plan via legacy whopPlanId lookup: ${plan.name}`);
+      }
+    }
 
     if (!plan) {
       console.error("❌ No plan found for Whop plan ID:", whopPlanId);
-      throw new Error(`Plan not found for whopPlanId: ${whopPlanId}`);
+      console.error("  Whop plan tier:", whopPlan?.planTier || "not assigned");
+      throw new Error(
+        `Plan not found for whopPlanId: ${whopPlanId}. ` +
+          (whopPlan
+            ? `Tier "${whopPlan.planTier || "none"}" is not mapped to an internal plan.`
+            : "Whop plan not found in sync data.")
+      );
     }
 
-    console.log("  ✅ Found plan:", plan.name);
+    console.log("  ✅ Found internal plan:", plan.name);
 
     // Step 2: Find company by companyId from metadata (preferred) or fallback to whopCompanyId
     let company;

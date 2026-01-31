@@ -7,7 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Package, Clock, EyeOff, Loader2, Bot } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RefreshCw, Package, Clock, EyeOff, Loader2, Bot, AlertTriangle, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
@@ -71,6 +78,14 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
 
   // Mutations
   const toggleAIInclusion = useMutation(api.products.mutations.toggleProductAIInclusion);
+  const assignPlanTier = useMutation(api.whopPlans.mutations.assignPlanTier);
+
+  // Check tier coverage - which tiers have active plans assigned
+  const tierCoverage = {
+    pro: plans?.some((p: any) => p.planTier === "pro" && p.isVisible) || false,
+    elite: plans?.some((p: any) => p.planTier === "elite" && p.isVisible) || false,
+  };
+  const hasUnassignedTiers = !tierCoverage.pro || !tierCoverage.elite;
 
   const handleToggleAI = async (productId: Id<"products">, currentValue: boolean) => {
     try {
@@ -79,6 +94,19 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     } catch (error) {
       console.error("Failed to toggle AI inclusion:", error);
       toast.error("Failed to update product");
+    }
+  };
+
+  const handleAssignTier = async (whopPlanId: Id<"whopPlans">, tier: string | null) => {
+    try {
+      await assignPlanTier({
+        whopPlanId,
+        planTier: tier === "none" ? undefined : (tier as "pro" | "elite"),
+      });
+      toast.success(tier === "none" ? "Tier removed" : `Assigned to ${tier} tier`);
+    } catch (error) {
+      console.error("Failed to assign tier:", error);
+      toast.error("Failed to assign tier");
     }
   };
 
@@ -190,6 +218,44 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
         </Button>
       </div>
 
+      {/* Tier Coverage Warning */}
+      {hasUnassignedTiers && plans && plans.length > 0 && (
+        <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-yellow-800 dark:text-yellow-200">
+                Subscription Tiers Not Configured
+              </p>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                Users cannot upgrade until you assign Whop plans to subscription tiers.
+                {!tierCoverage.pro && !tierCoverage.elite && " Both Pro and Elite tiers need a plan."}
+                {!tierCoverage.pro && tierCoverage.elite && " The Pro tier needs a plan assigned."}
+                {tierCoverage.pro && !tierCoverage.elite && " The Elite tier needs a plan assigned."}
+              </p>
+              <div className="flex gap-2 mt-2">
+                <Badge variant={tierCoverage.pro ? "default" : "outline"} className={cn(
+                  "text-xs",
+                  tierCoverage.pro
+                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                    : "border-yellow-400 text-yellow-700 dark:text-yellow-300"
+                )}>
+                  Pro: {tierCoverage.pro ? "✓ Configured" : "⚠ Needs Plan"}
+                </Badge>
+                <Badge variant={tierCoverage.elite ? "default" : "outline"} className={cn(
+                  "text-xs",
+                  tierCoverage.elite
+                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                    : "border-yellow-400 text-yellow-700 dark:text-yellow-300"
+                )}>
+                  Elite: {tierCoverage.elite ? "✓ Configured" : "⚠ Needs Plan"}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header with filters */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -284,38 +350,53 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                   </Badge>
                 </div>
 
-                {/* Pricing chips */}
+                {/* Pricing & Tier Assignment */}
                 {productPlans.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {productPlans.slice(0, 3).map((plan: any) => (
-                      <span
+                  <div className="space-y-2 mb-3">
+                    {productPlans.map((plan: any) => (
+                      <div
                         key={plan._id}
-                        className="px-2 py-1 rounded-md bg-secondary text-xs"
+                        className="flex items-center justify-between gap-2 p-2 rounded-md bg-secondary/50"
                       >
-                        {plan.initialPrice
-                          ? formatPrice(plan.initialPrice, plan.currency)
-                          : "Free"}
-                        {plan.planType === "renewal" && plan.billingPeriod && (
-                          <span className="text-muted-foreground">
-                            /{plan.billingPeriod === 30 || plan.billingPeriod === 31
-                              ? "mo"
-                              : plan.billingPeriod === 365 || plan.billingPeriod === 366
-                              ? "yr"
-                              : plan.billingPeriod === 7
-                              ? "wk"
-                              : `${plan.billingPeriod}d`}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-medium truncate">
+                            {plan.title || "Unnamed Plan"}
                           </span>
-                        )}
-                        {plan.planType === "one_time" && (
-                          <span className="text-muted-foreground"> once</span>
-                        )}
-                      </span>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {plan.initialPrice
+                              ? formatPrice(plan.initialPrice, plan.currency)
+                              : "Free"}
+                            {plan.planType === "renewal" && plan.billingPeriod && (
+                              <>
+                                /{plan.billingPeriod === 30 || plan.billingPeriod === 31
+                                  ? "mo"
+                                  : plan.billingPeriod === 365 || plan.billingPeriod === 366
+                                  ? "yr"
+                                  : plan.billingPeriod === 7
+                                  ? "wk"
+                                  : `${plan.billingPeriod}d`}
+                              </>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Tag className="h-3 w-3 text-muted-foreground" />
+                          <Select
+                            value={plan.planTier || "none"}
+                            onValueChange={(value) => handleAssignTier(plan._id, value)}
+                          >
+                            <SelectTrigger className="h-7 w-24 text-xs">
+                              <SelectValue placeholder="Tier" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              <SelectItem value="pro">Pro</SelectItem>
+                              <SelectItem value="elite">Elite</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     ))}
-                    {productPlans.length > 3 && (
-                      <span className="px-2 py-1 rounded-md bg-secondary text-xs text-muted-foreground">
-                        +{productPlans.length - 3} more
-                      </span>
-                    )}
                   </div>
                 )}
 

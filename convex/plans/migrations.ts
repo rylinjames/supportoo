@@ -5,12 +5,27 @@
 import { mutation } from "../_generated/server";
 
 /**
- * Set the Whop plan IDs for Pro and Elite tiers
- * Run once with: npx convex run plans:migrations:setTicketooPlanIds
+ * Set the Whop plan IDs for all tiers
+ * Run once with: npx convex run plans/migrations:setTicketooPlanIds
  */
 export const setTicketooPlanIds = mutation({
   args: {},
   handler: async (ctx) => {
+    // Ticketoo Free Plus -> Free tier
+    const freePlan = await ctx.db
+      .query("plans")
+      .withIndex("by_name", (q) => q.eq("name", "free"))
+      .first();
+
+    if (freePlan) {
+      await ctx.db.patch(freePlan._id, {
+        whopPlanId: "plan_UlJutCwEWou43",
+      });
+      console.log("✅ Updated Free plan with whopPlanId: plan_UlJutCwEWou43");
+    } else {
+      console.log("❌ Free plan not found");
+    }
+
     // Ticketoo Starter ($19.99/month) -> Pro tier
     const proPlan = await ctx.db
       .query("plans")
@@ -43,6 +58,7 @@ export const setTicketooPlanIds = mutation({
 
     return {
       success: true,
+      free: freePlan ? "plan_UlJutCwEWou43" : null,
       pro: proPlan ? "plan_QMpkRCMYdZ6Ua" : null,
       elite: elitePlan ? "plan_XJluzijze0bkK" : null,
     };

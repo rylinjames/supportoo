@@ -211,3 +211,57 @@ export const toggleProductAIInclusion = mutation({
     return { success: true };
   },
 });
+
+/**
+ * Clean up archived and inactive products for a company
+ *
+ * Use this to remove old checkout links and archived products
+ * that were previously synced but should no longer appear.
+ */
+export const cleanupArchivedProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    const allProducts = await ctx.db
+      .query("products")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    // Find products that are archived (visibility: "archived" in rawWhopData)
+    // or marked as inactive
+    const productsToDelete = allProducts.filter(product => {
+      const rawData = product.rawWhopData as any;
+
+      // Delete if visibility is "archived" or "quick_link"
+      if (rawData?.visibility === "archived" || rawData?.visibility === "quick_link") {
+        return true;
+      }
+
+      // Delete if marked as not active AND not visible
+      if (!product.isActive && !product.isVisible) {
+        return true;
+      }
+
+      return false;
+    });
+
+    console.log(`[cleanupArchivedProducts] Found ${productsToDelete.length} archived/inactive products to delete`);
+
+    // Log what we're deleting for debugging
+    for (const product of productsToDelete) {
+      console.log(`[cleanupArchivedProducts] Deleting: ${product.title} (${product.whopProductId})`);
+    }
+
+    // Delete them
+    const deletePromises = productsToDelete.map(product =>
+      ctx.db.delete(product._id)
+    );
+
+    await Promise.all(deletePromises);
+    return {
+      deletedCount: productsToDelete.length,
+      deletedProducts: productsToDelete.map(p => ({ id: p.whopProductId, title: p.title })),
+    };
+  },
+});

@@ -288,6 +288,7 @@ export const syncProducts = action({
       const syncedProductIds: string[] = [];
       const errors: string[] = [];
       let skippedCheckoutLinks = 0;
+      let skippedArchived = 0;
 
       for (const whopProduct of allProducts) {
         if (!whopProduct) continue; // Skip null entries
@@ -296,6 +297,13 @@ export const syncProducts = action({
         if (whopProduct.visibility === "quick_link") {
           skippedCheckoutLinks++;
           console.log(`[syncProducts] Skipped checkout link: ${whopProduct.id} (${whopProduct.title || whopProduct.name})`);
+          continue;
+        }
+
+        // Skip archived products/checkout links - these are old and shouldn't be synced
+        if (whopProduct.visibility === "archived") {
+          skippedArchived++;
+          console.log(`[syncProducts] Skipped archived item: ${whopProduct.id} (${whopProduct.title || whopProduct.name})`);
           continue;
         }
 
@@ -312,6 +320,9 @@ export const syncProducts = action({
 
       if (skippedCheckoutLinks > 0) {
         console.log(`[syncProducts] Skipped ${skippedCheckoutLinks} checkout links`);
+      }
+      if (skippedArchived > 0) {
+        console.log(`[syncProducts] Skipped ${skippedArchived} archived items`);
       }
 
       // Clean up products that no longer exist in Whop

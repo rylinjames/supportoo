@@ -96,18 +96,14 @@ export const syncPlans = action({
       // Get App API key
       const { apiKey } = getWhopConfig();
 
-      // Fetch plans from Whop API
+      // Fetch plans from Whop API using v5 endpoint (same as products)
       let allPlans: any[] = [];
-      let cursor: string | null = null;
+      let page = 1;
       let hasMore = true;
 
       while (hasMore) {
-        // Use v1 /plans endpoint with company_id filter
-        // The v5/app/plans endpoint doesn't exist - use v1/plans instead
-        let url = `https://api.whop.com/api/v1/plans?company_id=${company.whopCompanyId}&first=100`;
-        if (cursor) {
-          url += `&after=${cursor}`;
-        }
+        // Use v5 /app/plans endpoint - returns plans from all installed companies
+        const url = `https://api.whop.com/api/v5/app/plans?page=${page}&per=100`;
 
         console.log(`[syncPlans] Fetching from: ${url}`);
 
@@ -143,18 +139,31 @@ export const syncPlans = action({
         }
 
         const data = await response.json();
-        // v1 API returns plans directly in data array, already filtered by company_id
         const fetchedPlans = data.data || [];
 
-        if (fetchedPlans.length > 0) {
-          allPlans.push(...fetchedPlans);
+        // Filter plans for THIS company only (same pattern as products)
+        const companyPlans = fetchedPlans.filter(
+          (p: any) => p.company_id === company.whopCompanyId
+        );
+
+        if (companyPlans.length > 0) {
+          allPlans.push(...companyPlans);
+          console.log(`[syncPlans] Fetched ${fetchedPlans.length} total, ${companyPlans.length} for this company (page ${page})`);
+        } else {
+          console.log(`[syncPlans] Fetched ${fetchedPlans.length} total, 0 for this company (page ${page})`);
         }
 
-        // Check for pagination (v1 API uses page_info with edges/nodes format)
-        if (data.page_info?.has_next_page && data.page_info?.end_cursor) {
-          cursor = data.page_info.end_cursor;
+        // Check pagination
+        if (data.pagination?.next_page) {
+          page++;
         } else {
           hasMore = false;
+        }
+
+        // Safety limit
+        if (page > 20) {
+          console.log(`[syncPlans] Reached page limit of 20`);
+          break;
         }
       }
 
@@ -289,9 +298,9 @@ export const testPlansConnection = action({
 
       const { apiKey } = getWhopConfig();
 
-      // Use v1 /plans endpoint with company_id filter
+      // Use v5 /app/plans endpoint (same as products)
       const response = await fetchWithRetry(
-        `https://api.whop.com/api/v1/plans?company_id=${company.whopCompanyId}&first=10`,
+        `https://api.whop.com/api/v5/app/plans?page=1&per=100`,
         {
           method: "GET",
           headers: {
@@ -311,8 +320,10 @@ export const testPlansConnection = action({
       }
 
       const data = await response.json();
-      // v1 API already filters by company_id
-      const companyPlans = data.data || [];
+      // Filter plans for this company only
+      const companyPlans = (data.data || []).filter(
+        (p: any) => p.company_id === company.whopCompanyId
+      );
 
       return {
         success: true,

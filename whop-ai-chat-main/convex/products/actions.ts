@@ -9,7 +9,7 @@
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
-import { getWhopConfig } from "../lib/whop";
+import { getWhopConfig, getWhopInstance } from "../lib/whop";
 
 /**
  * Fetch with retry and exponential backoff
@@ -113,11 +113,8 @@ export const syncProducts = action({
       console.log(`[syncProducts] ✅ whopCompanyId uniqueness verified`);
       console.log(`[syncProducts] Fetching products for Whop company: ${company.whopCompanyId}`);
 
-      // Get App API key for multi-tenant product access
-      // Per Whop docs: "Use app api keys when you are building an app and need to access data on companies that have installed your app"
-      // Access company-specific data by specifying company_id parameter
-      const { apiKey } = getWhopConfig();
-      console.log(`[syncProducts] Using App API key with company_id parameter`);
+      // SDK handles authentication via getWhopInstance() using WHOP_API_KEY
+      console.log(`[syncProducts] Using Whop SDK with product_types filter`);
 
       // Mark all existing products as outdated before sync
       const outdatedCount = await ctx.runMutation(
@@ -126,8 +123,9 @@ export const syncProducts = action({
       );
       console.log(`[syncProducts] Marked ${outdatedCount} existing products as outdated`);
 
-      // Fetch products from Whop API
-      let allProducts = [];
+      // Fetch products from Whop API using SDK with product_types filter
+      // Using product_types: ['regular'] filters out checkout links at the API level
+      let allProducts: any[] = [];
 
       try {
         console.log(`[syncProducts] ========================================`);
@@ -136,80 +134,35 @@ export const syncProducts = action({
         console.log(`[syncProducts] Company Name: ${company.name}`);
         console.log(`[syncProducts] Company ID (Convex): ${companyId}`);
         console.log(`[syncProducts] Company ID (Whop): ${company.whopCompanyId}`);
-        console.log(`[syncProducts] Auth Method: APP_API_KEY with v5/app/products`);
+        console.log(`[syncProducts] Auth Method: SDK with product_types: ['regular']`);
         console.log(`[syncProducts] ----------------------------------------`);
 
-        let page = 1;
-        let hasMore = true;
+        // Use the Whop SDK to fetch products with product_types filter
+        // This filters out checkout links at the API level (much more reliable)
+        const whop = getWhopInstance();
 
-        while (hasMore) {
-          // Use v5 /app/products endpoint - returns ALL products from ALL installed companies
-          // Filter by company_id in the response to get only this company's products
-          // This works automatically for any company that has installed the app
-          const url: string = `https://api.whop.com/api/v5/app/products?page=${page}&per=100`;
+        console.log(`[syncProducts] Fetching products using SDK with product_types: ['regular']...`);
 
-          console.log(`[syncProducts] Fetching from: ${url}`);
+        let count = 0;
+        for await (const product of whop.products.list({
+          company_id: company.whopCompanyId,
+          product_types: ['regular']  // This filters out checkout links!
+        })) {
+          allProducts.push(product);
+          count++;
 
-          // Use fetchWithRetry for resilience against transient failures
-          const response: Response = await fetchWithRetry(url, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Accept': 'application/json',
-            }
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[syncProducts] API error: ${errorText}`);
-
-            // Check if it's a permission/auth error
-            if (errorText.includes('forbidden') || errorText.includes('not authorized') || errorText.includes('unauthorized') || errorText.includes('invalid') || errorText.includes('Bot API key')) {
-              console.log(`[syncProducts] ⚠️ AUTH ERROR - Make sure you're using an App API Key, not a Company/Bot API Key`);
-
-              return {
-                success: false,
-                syncedCount: 0,
-                deletedCount: 0,
-                errors: [
-                  "API Key error: Make sure WHOP_API_KEY is set to your App API Key from the developer dashboard, not a Company API Key."
-                ],
-              };
-            }
-
-            break;
-          }
-
-          const data: any = await response.json();
-          const fetchedProducts: any[] = data.data || [];
-
-          // Filter products for THIS company only
-          const companyProducts = fetchedProducts.filter(
-            (p: any) => p.company_id === company.whopCompanyId
-          );
-
-          if (companyProducts.length > 0) {
-            allProducts.push(...companyProducts);
-            console.log(`[syncProducts] Fetched ${fetchedProducts.length} total, ${companyProducts.length} for this company (page ${page})`);
-          } else {
-            console.log(`[syncProducts] Fetched ${fetchedProducts.length} total, 0 for this company (page ${page})`);
-          }
-
-          // Check pagination
-          if (data.pagination?.next_page) {
-            page++;
-            hasMore = true;
-          } else {
-            hasMore = false;
+          // Log progress every 10 products
+          if (count % 10 === 0) {
+            console.log(`[syncProducts] Fetched ${count} products so far...`);
           }
 
           // Safety limit
-          if (page > 20) {
-            console.log(`[syncProducts] Reached page limit of 20`);
+          if (count >= 500) {
+            console.log(`[syncProducts] Reached product limit of 500`);
             break;
           }
         }
-        
+
         console.log(`[syncProducts] ----------------------------------------`);
         console.log(`[syncProducts] Total products fetched: ${allProducts.length}`);
 
@@ -580,14 +533,14 @@ function extractBenefitsFromText(description: string | undefined): string[] {
 }
 
 /**
- * Test the Whop API connection and fetch products (with pagination)
+ * Test the Whop API connection and fetch products using SDK
  */
 export const testWhopConnection = action({
   args: {
     companyId: v.id("companies"),
     userToken: v.optional(v.string()),
   },
-  handler: async (ctx, { companyId, userToken }): Promise<any> => {
+  handler: async (ctx, { companyId }): Promise<any> => {
     try {
       const company: any = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId,
@@ -601,64 +554,35 @@ export const testWhopConnection = action({
         throw new Error("No Whop company ID found");
       }
 
-      // Get App API key for multi-tenant product access
-      const { apiKey } = getWhopConfig();
-
-      console.log(`[testWhopConnection] Using App API key with v5/app/products`);
+      console.log(`[testWhopConnection] Using Whop SDK with product_types: ['regular']`);
       console.log(`[testWhopConnection] Looking for company_id: ${company.whopCompanyId}`);
 
-      // Paginate through all pages to find this company's products
-      let allCompanyProducts: any[] = [];
-      let page = 1;
-      let hasMore = true;
-      let totalFetched = 0;
+      // Use SDK with product_types filter to get only regular products (not checkout links)
+      const whop = getWhopInstance();
+      const allCompanyProducts: any[] = [];
+      let count = 0;
 
-      while (hasMore && page <= 10) { // Limit to 10 pages for test
-        const url = `https://api.whop.com/api/v5/app/products?page=${page}&per=100`;
+      for await (const product of whop.products.list({
+        company_id: company.whopCompanyId,
+        product_types: ['regular']  // Filters out checkout links
+      })) {
+        allCompanyProducts.push(product);
+        count++;
 
-        // Use fetchWithRetry for resilience against transient failures
-        const response = await fetchWithRetry(url, {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Accept': 'application/json',
-          }
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          // Check for API key type error
-          if (errorText.includes('Bot API key')) {
-            throw new Error(`Wrong API Key type: You're using a Company/Bot API Key. Please use the App API Key from your app's developer page at https://whop.com/dashboard/developer`);
-          }
-          throw new Error(`API error: ${errorText}`);
-        }
-
-        const data = await response.json();
-        const fetchedProducts = data.data || [];
-        totalFetched += fetchedProducts.length;
-
-        // Filter for this company's products
-        const companyProducts = fetchedProducts.filter((p: any) => p.company_id === company.whopCompanyId);
-        if (companyProducts.length > 0) {
-          allCompanyProducts.push(...companyProducts);
-          console.log(`[testWhopConnection] Page ${page}: Found ${companyProducts.length} products for this company`);
-        }
-
-        // Check pagination
-        if (data.pagination?.next_page) {
-          page++;
-        } else {
-          hasMore = false;
+        // Limit for test
+        if (count >= 50) {
+          console.log(`[testWhopConnection] Reached test limit of 50 products`);
+          break;
         }
       }
 
-      console.log(`[testWhopConnection] Total fetched: ${totalFetched}, For this company: ${allCompanyProducts.length}`);
+      console.log(`[testWhopConnection] Found ${allCompanyProducts.length} regular products for this company`);
 
       return {
         success: true,
         message: `Successfully connected to Whop. Found ${allCompanyProducts.length} products for this company.`,
         companyId: company.whopCompanyId,
-        tokenType: "APP_API_KEY",
+        tokenType: "SDK_WITH_PRODUCT_TYPES_FILTER",
         sampleProducts: allCompanyProducts.slice(0, 10).map((p: any) => ({
           id: p.id,
           title: p.title || p.name || "Untitled",

@@ -1,0 +1,1 @@
+- always do things with extreme thought and the best possible solution long term

@@ -1,0 +1,351 @@
+/**
+ * Products Mutations
+ * 
+ * Mutations for creating, updating, and deleting product records
+ */
+
+import { v } from "convex/values";
+import { mutation } from "../_generated/server";
+
+/**
+ * Create or update a product from Whop data
+ */
+export const upsertProduct = mutation({
+  args: {
+    companyId: v.id("companies"),
+    whopProductId: v.string(),
+    whopCompanyId: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    price: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    productType: v.union(
+      v.literal("membership"),
+      v.literal("digital_product"), 
+      v.literal("course"),
+      v.literal("community"),
+      v.literal("software"),
+      v.literal("other")
+    ),
+    accessType: v.union(
+      v.literal("one_time"),
+      v.literal("subscription"),
+      v.literal("lifetime")
+    ),
+    billingPeriod: v.optional(v.union(
+      v.literal("monthly"),
+      v.literal("yearly"),
+      v.literal("weekly"),
+      v.literal("daily")
+    )),
+    isActive: v.boolean(),
+    isVisible: v.boolean(),
+    category: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    imageUrl: v.optional(v.string()),
+    features: v.optional(v.array(v.string())),
+    benefits: v.optional(v.array(v.string())),
+    targetAudience: v.optional(v.string()),
+    rawWhopData: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    // Check if product already exists FOR THIS COMPANY (multi-tenant isolation)
+    // Using compound index to ensure each company has its own copy of products
+    const existingProduct = await ctx.db
+      .query("products")
+      .withIndex("by_company_whop_product", (q) =>
+        q.eq("companyId", args.companyId).eq("whopProductId", args.whopProductId)
+      )
+      .first();
+
+    const productData = {
+      companyId: args.companyId,
+      whopProductId: args.whopProductId,
+      whopCompanyId: args.whopCompanyId,
+      title: args.title,
+      description: args.description,
+      price: args.price,
+      currency: args.currency,
+      productType: args.productType,
+      accessType: args.accessType,
+      billingPeriod: args.billingPeriod,
+      isActive: args.isActive,
+      isVisible: args.isVisible,
+      category: args.category,
+      tags: args.tags,
+      imageUrl: args.imageUrl,
+      features: args.features,
+      benefits: args.benefits,
+      targetAudience: args.targetAudience,
+      lastSyncedAt: now,
+      syncStatus: "synced" as const,
+      syncError: undefined,
+      rawWhopData: args.rawWhopData,
+      updatedAt: now,
+    };
+
+    if (existingProduct) {
+      // Update existing product
+      await ctx.db.patch(existingProduct._id, productData);
+      return existingProduct._id;
+    } else {
+      // Create new product
+      const productId = await ctx.db.insert("products", {
+        ...productData,
+        createdAt: now,
+      });
+      return productId;
+    }
+  },
+});
+
+/**
+ * Mark products as outdated for a company (before sync)
+ */
+export const markProductsAsOutdated = mutation({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    const updatePromises = products.map(product =>
+      ctx.db.patch(product._id, {
+        syncStatus: "outdated" as const,
+        updatedAt: Date.now(),
+      })
+    );
+
+    await Promise.all(updatePromises);
+    return products.length;
+  },
+});
+
+/**
+ * Mark a product as having a sync error
+ */
+export const markProductSyncError = mutation({
+  args: {
+    productId: v.id("products"),
+    error: v.string(),
+  },
+  handler: async (ctx, { productId, error }) => {
+    await ctx.db.patch(productId, {
+      syncStatus: "error",
+      syncError: error,
+      lastSyncedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Delete products that are no longer in Whop (cleanup after sync)
+ */
+export const cleanupDeletedProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+    syncedProductIds: v.array(v.string()), // Whop product IDs that were synced
+  },
+  handler: async (ctx, { companyId, syncedProductIds }) => {
+    const allProducts = await ctx.db
+      .query("products")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    // Find products that are no longer in Whop
+    const productsToDelete = allProducts.filter(product => 
+      !syncedProductIds.includes(product.whopProductId)
+    );
+
+    // Delete them
+    const deletePromises = productsToDelete.map(product =>
+      ctx.db.delete(product._id)
+    );
+
+    await Promise.all(deletePromises);
+    return productsToDelete.length;
+  },
+});
+
+/**
+ * Delete all products for a company
+ */
+export const deleteAllCompanyProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    const deletePromises = products.map(product =>
+      ctx.db.delete(product._id)
+    );
+
+    await Promise.all(deletePromises);
+    return products.length;
+  },
+});
+
+/**
+ * Toggle whether a product is included in AI context
+ */
+export const toggleProductAIInclusion = mutation({
+  args: {
+    productId: v.id("products"),
+    includeInAI: v.boolean(),
+  },
+  handler: async (ctx, { productId, includeInAI }) => {
+    await ctx.db.patch(productId, {
+      includeInAI,
+      updatedAt: Date.now(),
+    });
+    return { success: true };
+  },
+});
+
+/**
+ * Exclude specific products from sync (add to blocklist)
+ *
+ * Products in the blocklist won't be synced from Whop.
+ * Also deletes any existing products with these IDs.
+ */
+export const excludeProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+    whopProductIds: v.array(v.string()),
+  },
+  handler: async (ctx, { companyId, whopProductIds }) => {
+    // Get company
+    const company = await ctx.db.get(companyId);
+    if (!company) {
+      throw new Error("Company not found");
+    }
+
+    // Merge with existing excluded IDs
+    const existingExcluded = company.excludedProductIds || [];
+    const newExcluded = [...new Set([...existingExcluded, ...whopProductIds])];
+
+    // Update company with new exclusion list
+    await ctx.db.patch(companyId, {
+      excludedProductIds: newExcluded,
+      updatedAt: Date.now(),
+    });
+
+    // Delete any existing products with these IDs
+    let deletedCount = 0;
+    for (const whopProductId of whopProductIds) {
+      const product = await ctx.db
+        .query("products")
+        .withIndex("by_company_whop_product", (q) =>
+          q.eq("companyId", companyId).eq("whopProductId", whopProductId)
+        )
+        .first();
+
+      if (product) {
+        console.log(`[excludeProducts] Deleting product: ${product.title} (${whopProductId})`);
+        await ctx.db.delete(product._id);
+        deletedCount++;
+      }
+    }
+
+    console.log(`[excludeProducts] Added ${whopProductIds.length} products to blocklist, deleted ${deletedCount} existing products`);
+
+    return {
+      excludedCount: whopProductIds.length,
+      deletedCount,
+      totalExcluded: newExcluded.length,
+    };
+  },
+});
+
+/**
+ * Remove products from exclusion list (unblock)
+ */
+export const unexcludeProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+    whopProductIds: v.array(v.string()),
+  },
+  handler: async (ctx, { companyId, whopProductIds }) => {
+    const company = await ctx.db.get(companyId);
+    if (!company) {
+      throw new Error("Company not found");
+    }
+
+    const existingExcluded = company.excludedProductIds || [];
+    const newExcluded = existingExcluded.filter(id => !whopProductIds.includes(id));
+
+    await ctx.db.patch(companyId, {
+      excludedProductIds: newExcluded,
+      updatedAt: Date.now(),
+    });
+
+    return {
+      removedCount: existingExcluded.length - newExcluded.length,
+      totalExcluded: newExcluded.length,
+    };
+  },
+});
+
+/**
+ * Clean up archived and inactive products for a company
+ *
+ * Use this to remove old checkout links and archived products
+ * that were previously synced but should no longer appear.
+ */
+export const cleanupArchivedProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    const allProducts = await ctx.db
+      .query("products")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    // Find products that are archived (visibility: "archived" in rawWhopData)
+    // or marked as inactive
+    const productsToDelete = allProducts.filter(product => {
+      const rawData = product.rawWhopData as any;
+
+      // Delete if visibility is "archived" or "quick_link"
+      if (rawData?.visibility === "archived" || rawData?.visibility === "quick_link") {
+        return true;
+      }
+
+      // Delete if marked as not active AND not visible
+      if (!product.isActive && !product.isVisible) {
+        return true;
+      }
+
+      return false;
+    });
+
+    console.log(`[cleanupArchivedProducts] Found ${productsToDelete.length} archived/inactive products to delete`);
+
+    // Log what we're deleting for debugging
+    for (const product of productsToDelete) {
+      console.log(`[cleanupArchivedProducts] Deleting: ${product.title} (${product.whopProductId})`);
+    }
+
+    // Delete them
+    const deletePromises = productsToDelete.map(product =>
+      ctx.db.delete(product._id)
+    );
+
+    await Promise.all(deletePromises);
+    return {
+      deletedCount: productsToDelete.length,
+      deletedProducts: productsToDelete.map(p => ({ id: p.whopProductId, title: p.title })),
+    };
+  },
+});

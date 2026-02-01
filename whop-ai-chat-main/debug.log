@@ -1,0 +1,3 @@
+====== DEBUG LOG FILE ======
+Started: ${new Date().toISOString()}
+================================

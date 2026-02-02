@@ -10,6 +10,7 @@ import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { getWhopConfig } from "../lib/whop";
+import Whop from "@whop/sdk";
 
 /**
  * Fetch with retry and exponential backoff
@@ -133,52 +134,31 @@ export const syncProducts = action({
         console.log(`[syncProducts] Has User Token: ${!!userToken}`);
         console.log(`[syncProducts] ----------------------------------------`);
 
-        // Use HTTP API with product_types[]=regular filter to exclude checkout links
-        // IMPORTANT: Always use app API key for /v5/app/products endpoint
-        // userToken doesn't have access to this endpoint
-        const { apiKey } = getWhopConfig();
-        console.log(`[syncProducts] Using HTTP API with appApiKey + product_types[]=regular filter`);
+        // Use Whop SDK with product_types: ['regular'] filter to exclude checkout links
+        // Requires access_pass:basic:read permission in Whop developer dashboard
+        const { apiKey, appId } = getWhopConfig();
+        console.log(`[syncProducts] Using Whop SDK with product_types: ['regular'] filter`);
 
-        let page = 1;
-        let hasMore = true;
+        // Initialize SDK with both apiKey and appID (required for products.list)
+        const sdk = new Whop({ apiKey, appID: appId });
 
-        while (hasMore) {
-          // Add product_types[]=regular to filter out checkout links at API level
-          const url = `https://api.whop.com/api/v5/app/products?page=${page}&per=100&product_types[]=regular`;
-          console.log(`[syncProducts] Fetching page ${page}...`);
+        let count = 0;
+        for await (const product of sdk.products.list({
+          company_id: company.whopCompanyId,
+          product_types: ['regular']  // Filters out checkout links
+        })) {
+          allProducts.push(product);
+          count++;
 
-          const response = await fetchWithRetry(url, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Accept': 'application/json',
-            }
-          });
+          if (count % 10 === 0) {
+            console.log(`[syncProducts] Fetched ${count} products so far...`);
+          }
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[syncProducts] API error: ${errorText}`);
+          // Safety limit
+          if (count >= 500) {
+            console.log(`[syncProducts] Reached product limit of 500`);
             break;
           }
-
-          const data = await response.json();
-          const fetchedProducts = data.data || [];
-
-          // Filter for THIS company only
-          const companyProducts = fetchedProducts.filter(
-            (p: any) => p.company_id === company.whopCompanyId
-          );
-
-          allProducts.push(...companyProducts);
-          console.log(`[syncProducts] Page ${page}: ${companyProducts.length} products for this company`);
-
-          if (data.pagination?.next_page) {
-            page++;
-          } else {
-            hasMore = false;
-          }
-
-          if (page > 20) break;
         }
 
         console.log(`[syncProducts] ----------------------------------------`);
@@ -577,23 +557,21 @@ export const testWhopConnection = action({
 
       const allCompanyProducts: any[] = [];
 
-      // Use HTTP API with product_types[]=regular filter
-      // Always use app API key for /v5/app/products endpoint
-      const { apiKey } = getWhopConfig();
-      console.log(`[testWhopConnection] Using HTTP API with product_types[]=regular`);
+      // Use Whop SDK with product_types: ['regular'] filter
+      // Requires access_pass:basic:read permission in Whop developer dashboard
+      const { apiKey, appId } = getWhopConfig();
+      console.log(`[testWhopConnection] Using Whop SDK with product_types: ['regular']`);
 
-      const response = await fetch(
-        `https://api.whop.com/api/v5/app/products?per=50&product_types[]=regular`,
-        { headers: { 'Authorization': `Bearer ${apiKey}` } }
-      );
+      const sdk = new Whop({ apiKey, appID: appId });
 
-      if (response.ok) {
-        const data = await response.json();
-        const products = (data.data || []).filter((p: any) => p.company_id === company.whopCompanyId);
-        allCompanyProducts.push(...products);
-      } else {
-        const errorText = await response.text();
-        throw new Error(`API error: ${errorText}`);
+      let count = 0;
+      for await (const product of sdk.products.list({
+        company_id: company.whopCompanyId,
+        product_types: ['regular']
+      })) {
+        allCompanyProducts.push(product);
+        count++;
+        if (count >= 50) break;  // Limit for test
       }
 
       console.log(`[testWhopConnection] Found ${allCompanyProducts.length} products`);

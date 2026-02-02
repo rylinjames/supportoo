@@ -134,13 +134,10 @@ export const syncProducts = action({
         console.log(`[syncProducts] ----------------------------------------`);
 
         // Use HTTP API with product_types[]=regular filter to exclude checkout links
-        // The userToken from Whop iframe doesn't have scopes needed for SDK
+        // IMPORTANT: Always use app API key for /v5/app/products endpoint
+        // userToken doesn't have access to this endpoint
         const { apiKey } = getWhopConfig();
-
-        // Use userToken if available (better access), otherwise use app API key
-        const authToken = userToken || apiKey;
-        const tokenType = userToken ? 'userToken' : 'appApiKey';
-        console.log(`[syncProducts] Using HTTP API with ${tokenType} + product_types[]=regular filter`);
+        console.log(`[syncProducts] Using HTTP API with appApiKey + product_types[]=regular filter`);
 
         let page = 1;
         let hasMore = true;
@@ -153,7 +150,7 @@ export const syncProducts = action({
           const response = await fetchWithRetry(url, {
             method: 'GET',
             headers: {
-              'Authorization': `Bearer ${authToken}`,
+              'Authorization': `Bearer ${apiKey}`,
               'Accept': 'application/json',
             }
           });
@@ -161,26 +158,6 @@ export const syncProducts = action({
           if (!response.ok) {
             const errorText = await response.text();
             console.error(`[syncProducts] API error: ${errorText}`);
-
-            // If userToken fails, try with app API key
-            if (userToken && (errorText.includes('unauthorized') || errorText.includes('forbidden'))) {
-              console.log(`[syncProducts] userToken failed, retrying with app API key...`);
-              const retryResponse = await fetchWithRetry(url, {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Bearer ${apiKey}`,
-                  'Accept': 'application/json',
-                }
-              });
-              if (retryResponse.ok) {
-                const retryData = await retryResponse.json();
-                const retryProducts = (retryData.data || []).filter(
-                  (p: any) => p.company_id === company.whopCompanyId
-                );
-                allProducts.push(...retryProducts);
-                console.log(`[syncProducts] Retry succeeded: ${retryProducts.length} products`);
-              }
-            }
             break;
           }
 
@@ -601,13 +578,13 @@ export const testWhopConnection = action({
       const allCompanyProducts: any[] = [];
 
       // Use HTTP API with product_types[]=regular filter
+      // Always use app API key for /v5/app/products endpoint
       const { apiKey } = getWhopConfig();
-      const authToken = userToken || apiKey;
       console.log(`[testWhopConnection] Using HTTP API with product_types[]=regular`);
 
       const response = await fetch(
         `https://api.whop.com/api/v5/app/products?per=50&product_types[]=regular`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } }
+        { headers: { 'Authorization': `Bearer ${apiKey}` } }
       );
 
       if (response.ok) {

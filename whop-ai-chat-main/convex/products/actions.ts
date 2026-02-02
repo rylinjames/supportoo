@@ -10,7 +10,6 @@ import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { getWhopConfig } from "../lib/whop";
-import Whop from "@whop/sdk";
 
 /**
  * Fetch with retry and exponential backoff
@@ -134,77 +133,75 @@ export const syncProducts = action({
         console.log(`[syncProducts] Has User Token: ${!!userToken}`);
         console.log(`[syncProducts] ----------------------------------------`);
 
-        // Use SDK with userToken when available (filters checkout links properly)
-        // Fall back to HTTP API when no userToken
-        if (userToken) {
-          console.log(`[syncProducts] Using SDK with userToken + product_types: ['regular']`);
+        // Use HTTP API with product_types[]=regular filter to exclude checkout links
+        // The userToken from Whop iframe doesn't have scopes needed for SDK
+        const { apiKey } = getWhopConfig();
 
-          // Initialize SDK with user's token (not app API key)
-          // This gives access to the user's company products
-          const sdk = new Whop({ apiKey: userToken });
+        // Use userToken if available (better access), otherwise use app API key
+        const authToken = userToken || apiKey;
+        const tokenType = userToken ? 'userToken' : 'appApiKey';
+        console.log(`[syncProducts] Using HTTP API with ${tokenType} + product_types[]=regular filter`);
 
-          let count = 0;
-          for await (const product of sdk.products.list({
-            company_id: company.whopCompanyId,
-            product_types: ['regular']  // Filters out checkout links!
-          })) {
-            allProducts.push(product);
-            count++;
+        let page = 1;
+        let hasMore = true;
 
-            if (count % 10 === 0) {
-              console.log(`[syncProducts] Fetched ${count} products so far...`);
+        while (hasMore) {
+          // Add product_types[]=regular to filter out checkout links at API level
+          const url = `https://api.whop.com/api/v5/app/products?page=${page}&per=100&product_types[]=regular`;
+          console.log(`[syncProducts] Fetching page ${page}...`);
+
+          const response = await fetchWithRetry(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+              'Accept': 'application/json',
             }
+          });
 
-            if (count >= 500) {
-              console.log(`[syncProducts] Reached product limit of 500`);
-              break;
-            }
-          }
-        } else {
-          // Fallback: Use HTTP API when no userToken available
-          console.log(`[syncProducts] No userToken - falling back to HTTP API`);
-          const { apiKey } = getWhopConfig();
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[syncProducts] API error: ${errorText}`);
 
-          let page = 1;
-          let hasMore = true;
-
-          while (hasMore) {
-            const url = `https://api.whop.com/api/v5/app/products?page=${page}&per=100`;
-            console.log(`[syncProducts] Fetching page ${page}...`);
-
-            const response = await fetchWithRetry(url, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Accept': 'application/json',
+            // If userToken fails, try with app API key
+            if (userToken && (errorText.includes('unauthorized') || errorText.includes('forbidden'))) {
+              console.log(`[syncProducts] userToken failed, retrying with app API key...`);
+              const retryResponse = await fetchWithRetry(url, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${apiKey}`,
+                  'Accept': 'application/json',
+                }
+              });
+              if (retryResponse.ok) {
+                const retryData = await retryResponse.json();
+                const retryProducts = (retryData.data || []).filter(
+                  (p: any) => p.company_id === company.whopCompanyId
+                );
+                allProducts.push(...retryProducts);
+                console.log(`[syncProducts] Retry succeeded: ${retryProducts.length} products`);
               }
-            });
-
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error(`[syncProducts] API error: ${errorText}`);
-              break;
             }
-
-            const data = await response.json();
-            const fetchedProducts = data.data || [];
-
-            // Filter for THIS company only
-            const companyProducts = fetchedProducts.filter(
-              (p: any) => p.company_id === company.whopCompanyId
-            );
-
-            allProducts.push(...companyProducts);
-            console.log(`[syncProducts] Page ${page}: ${companyProducts.length} products for this company`);
-
-            if (data.pagination?.next_page) {
-              page++;
-            } else {
-              hasMore = false;
-            }
-
-            if (page > 20) break;
+            break;
           }
+
+          const data = await response.json();
+          const fetchedProducts = data.data || [];
+
+          // Filter for THIS company only
+          const companyProducts = fetchedProducts.filter(
+            (p: any) => p.company_id === company.whopCompanyId
+          );
+
+          allProducts.push(...companyProducts);
+          console.log(`[syncProducts] Page ${page}: ${companyProducts.length} products for this company`);
+
+          if (data.pagination?.next_page) {
+            page++;
+          } else {
+            hasMore = false;
+          }
+
+          if (page > 20) break;
         }
 
         console.log(`[syncProducts] ----------------------------------------`);
@@ -603,35 +600,23 @@ export const testWhopConnection = action({
 
       const allCompanyProducts: any[] = [];
 
-      if (userToken) {
-        // Use SDK with userToken for proper filtering
-        console.log(`[testWhopConnection] Using SDK with userToken + product_types: ['regular']`);
+      // Use HTTP API with product_types[]=regular filter
+      const { apiKey } = getWhopConfig();
+      const authToken = userToken || apiKey;
+      console.log(`[testWhopConnection] Using HTTP API with product_types[]=regular`);
 
-        const sdk = new Whop({ apiKey: userToken });
-        let count = 0;
+      const response = await fetch(
+        `https://api.whop.com/api/v5/app/products?per=50&product_types[]=regular`,
+        { headers: { 'Authorization': `Bearer ${authToken}` } }
+      );
 
-        for await (const product of sdk.products.list({
-          company_id: company.whopCompanyId,
-          product_types: ['regular']
-        })) {
-          allCompanyProducts.push(product);
-          count++;
-          if (count >= 50) break;
-        }
+      if (response.ok) {
+        const data = await response.json();
+        const products = (data.data || []).filter((p: any) => p.company_id === company.whopCompanyId);
+        allCompanyProducts.push(...products);
       } else {
-        // Fallback to HTTP API
-        console.log(`[testWhopConnection] No userToken - using HTTP API fallback`);
-        const { apiKey } = getWhopConfig();
-
-        const response = await fetch(`https://api.whop.com/api/v5/app/products?per=50`, {
-          headers: { 'Authorization': `Bearer ${apiKey}` }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const products = (data.data || []).filter((p: any) => p.company_id === company.whopCompanyId);
-          allCompanyProducts.push(...products);
-        }
+        const errorText = await response.text();
+        throw new Error(`API error: ${errorText}`);
       }
 
       console.log(`[testWhopConnection] Found ${allCompanyProducts.length} products`);

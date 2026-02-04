@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RefreshCw, Package, Clock, EyeOff, Loader2, Bot, AlertTriangle, Tag } from "lucide-react";
+import { RefreshCw, Package, Clock, EyeOff, Loader2, Bot, AlertTriangle, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
@@ -29,6 +29,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
   const { userToken } = useUser();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncingPlans, setIsSyncingPlans] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [showHiddenProducts, setShowHiddenProducts] = useState(false);
 
   // Query products with filter based on toggle state
@@ -79,6 +80,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
   // Mutations
   const toggleAIInclusion = useMutation(api.products.mutations.toggleProductAIInclusion);
   const assignPlanTier = useMutation(api.whopPlans.mutations.assignPlanTier);
+  const forceCleanupCheckoutLinks = useMutation(api.products.mutations.forceCleanupCheckoutLinks);
 
   // Check tier coverage - which tiers have active plans assigned
   const tierCoverage = {
@@ -150,6 +152,30 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     }
   };
 
+  const handleCleanupCheckoutLinks = async () => {
+    if (isCleaningUp) return;
+
+    setIsCleaningUp(true);
+
+    try {
+      const result = await forceCleanupCheckoutLinks({ companyId });
+
+      if (result.deletedCount > 0) {
+        toast.success(
+          `Removed ${result.deletedCount} checkout links. ${result.remainingCount} products remain.`
+        );
+        console.log("Deleted checkout links:", result.deletedProducts);
+      } else {
+        toast.info("No checkout links found to clean up");
+      }
+    } catch (error) {
+      console.error("Cleanup failed:", error);
+      toast.error(`Cleanup failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
   const formatPrice = (price: number, currency: string = "USD") => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -203,19 +229,40 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
             </p>
           </div>
         </div>
-        <Button onClick={handleSyncProducts} disabled={isSyncing || isSyncingPlans} size="sm">
-          {isSyncing || isSyncingPlans ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              {isSyncing ? "Syncing..." : "Syncing Plans..."}
-            </>
-          ) : (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Sync Now
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleCleanupCheckoutLinks}
+            disabled={isCleaningUp || isSyncing}
+            size="sm"
+            variant="outline"
+            title="Remove checkout links from database"
+          >
+            {isCleaningUp ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Cleaning...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clean Up
+              </>
+            )}
+          </Button>
+          <Button onClick={handleSyncProducts} disabled={isSyncing || isSyncingPlans} size="sm">
+            {isSyncing || isSyncingPlans ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {isSyncing ? "Syncing..." : "Syncing Plans..."}
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync Now
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Tier Coverage Warning */}

@@ -10,6 +10,7 @@ import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { api } from "../_generated/api";
 import { getWhopConfig } from "../lib/whop";
+import Whop from "@whop/sdk";
 
 /**
  * Fetch with retry and exponential backoff
@@ -93,83 +94,11 @@ export const syncPlans = action({
 
       console.log(`[syncPlans] Fetching plans for Whop company: ${company.whopCompanyId}`);
 
-      // Get App API key
-      const { apiKey } = getWhopConfig();
+      // Get App API key and App ID
+      const { apiKey, appId } = getWhopConfig();
 
-      // Fetch plans from Whop API using v5 endpoint (same as products)
-      let allPlans: any[] = [];
-      let page = 1;
-      let hasMore = true;
-
-      while (hasMore) {
-        // Use v5 /app/plans endpoint - returns plans from all installed companies
-        const url = `https://api.whop.com/api/v5/app/plans?page=${page}&per=100`;
-
-        console.log(`[syncPlans] Fetching from: ${url}`);
-
-        // Use fetchWithRetry for resilience against transient failures
-        const response = await fetchWithRetry(url, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            Accept: "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`[syncPlans] API error (${response.status}): ${errorText}`);
-
-          if (
-            errorText.includes("forbidden") ||
-            errorText.includes("not authorized") ||
-            errorText.includes("unauthorized")
-          ) {
-            return {
-              success: false,
-              syncedCount: 0,
-              deletedCount: 0,
-              errors: [
-                "API Key error: Make sure WHOP_API_KEY is set to your App API Key.",
-              ],
-            };
-          }
-
-          break;
-        }
-
-        const data = await response.json();
-        const fetchedPlans = data.data || [];
-
-        // Filter plans for THIS company only (same pattern as products)
-        const companyPlans = fetchedPlans.filter(
-          (p: any) => p.company_id === company.whopCompanyId
-        );
-
-        if (companyPlans.length > 0) {
-          allPlans.push(...companyPlans);
-          console.log(`[syncPlans] Fetched ${fetchedPlans.length} total, ${companyPlans.length} for this company (page ${page})`);
-        } else {
-          console.log(`[syncPlans] Fetched ${fetchedPlans.length} total, 0 for this company (page ${page})`);
-        }
-
-        // Check pagination
-        if (data.pagination?.next_page) {
-          page++;
-        } else {
-          hasMore = false;
-        }
-
-        // Safety limit
-        if (page > 20) {
-          console.log(`[syncPlans] Reached page limit of 20`);
-          break;
-        }
-      }
-
-      console.log(
-        `[syncPlans] Found ${allPlans.length} plans for company ${company.whopCompanyId}`
-      );
+      // Get existing products first - we'll fetch plans for each product
+      console.log(`[syncPlans] Fetching products first...`);
 
       // Get existing products to link plans
       const products = await ctx.runQuery(
@@ -183,16 +112,41 @@ export const syncPlans = action({
         productMap.set(product.whopProductId, product._id);
       }
 
+      console.log(`[syncPlans] Have ${products.length} products, fetching plans for each...`);
+
+      // Fetch plans for each product using SDK
+      const sdk = new Whop({ apiKey, appID: appId });
+      const companyPlans: any[] = [];
+
+      for (const product of products) {
+        try {
+          console.log(`[syncPlans] Fetching plans for product: ${product.title} (${product.whopProductId})`);
+
+          // Use SDK to get plans for this specific product
+          for await (const plan of sdk.plans.list({ product_id: product.whopProductId } as any)) {
+            companyPlans.push({
+              ...plan,
+              _linkedProductId: product.whopProductId, // Track which product this came from
+            });
+          }
+        } catch (err) {
+          // Log but continue - some products may not have plans
+          console.log(`[syncPlans] Could not fetch plans for ${product.title}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      console.log(`[syncPlans] Found ${companyPlans.length} plans total`);
+
       // Sync each plan
       let syncedCount = 0;
       const errors: string[] = [];
       const syncedPlanIds: string[] = [];
 
-      for (const whopPlan of allPlans) {
+      for (const whopPlan of companyPlans) {
         try {
-          // Get the Whop product ID from the plan
+          // Get the Whop product ID from the plan (use our linked ID if available)
           const whopProductId =
-            whopPlan.product?.id || whopPlan.product_id || "";
+            whopPlan._linkedProductId || whopPlan.product?.id || whopPlan.product_id || "";
 
           // Find our internal product ID
           const productId = productMap.get(whopProductId);

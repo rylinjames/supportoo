@@ -151,6 +151,76 @@ export const createCheckoutSession = action({
 });
 
 /**
+ * Activate plan immediately after successful Whop in-app purchase.
+ *
+ * Called by the frontend right after iframeSdk.inAppPurchase() returns success.
+ * This ensures the plan updates synchronously without relying on the webhook,
+ * which can fail due to plan mapping issues, company lookup mismatches,
+ * or metadata not passing through.
+ *
+ * The webhook handler is idempotent and will simply confirm the existing state
+ * if it arrives after this action has already activated the plan.
+ */
+export const activatePlanAfterPayment = action({
+  args: {
+    companyId: v.id("companies"),
+    targetPlanName: v.union(v.literal("pro"), v.literal("elite")),
+    whopUserId: v.string(),
+    receiptId: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    { companyId, targetPlanName, whopUserId, receiptId }
+  ): Promise<{ success: boolean; message: string }> => {
+    console.log(`🚀 Direct plan activation: ${targetPlanName}`);
+    console.log(`  Company: ${companyId}`);
+    console.log(`  Receipt: ${receiptId || "none"}`);
+
+    // 1. Verify user is admin
+    const user = await ctx.runQuery(api.users.queries.getUserByWhopUserId, {
+      whopUserId,
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const roleInCompany = await ctx.runQuery(
+      api.users.multi_company_helpers.getUserRoleInCompany,
+      { userId: user._id, companyId }
+    );
+
+    if (roleInCompany !== "admin") {
+      throw new Error("Only admins can activate plans");
+    }
+
+    // 2. Activate the plan directly
+    const result = await ctx.runMutation(
+      api.billing.mutations.directActivatePlan,
+      {
+        companyId,
+        planName: targetPlanName,
+        receiptId,
+      }
+    );
+
+    if (result.alreadyActive) {
+      return {
+        success: true,
+        message: `Already on ${targetPlanName} plan`,
+      };
+    }
+
+    console.log(`✅ Plan ${targetPlanName} activated successfully`);
+
+    return {
+      success: true,
+      message: `Plan upgraded to ${targetPlanName}!`,
+    };
+  },
+});
+
+/**
  * Cancel Whop membership for plan downgrade
  *
  * Only admins can cancel memberships.

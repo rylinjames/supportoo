@@ -38,7 +38,7 @@ export const seedInitialData = mutation({
 
       // AI Configuration
       aiModels: ["gpt-4o-mini"],
-      aiResponsesPerMonth: 20,
+      aiResponsesPerMonth: 100,
 
       // Features
       hasTemplates: false,

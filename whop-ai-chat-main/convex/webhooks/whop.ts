@@ -122,17 +122,21 @@ export const handlePaymentSucceeded = action({
     let company;
     if (companyId) {
       // Use companyId from metadata (our internal ID)
-      company = await ctx.runQuery(api.companies.queries.getCompanyById, {
-        companyId: companyId as any, // Type assertion needed for Convex ID
-      });
-      if (company) {
-        console.log("  ✅ Found company by metadata companyId:", company.name);
+      try {
+        company = await ctx.runQuery(api.companies.queries.getCompanyById, {
+          companyId: companyId as any, // Type assertion needed for Convex ID
+        });
+        if (company) {
+          console.log("  ✅ Found company by metadata companyId:", company.name);
+        }
+      } catch (e) {
+        console.log("  ⚠️ Metadata companyId lookup failed:", e);
       }
     }
 
     // Fallback to whopCompanyId if metadata companyId not found
-    if (!company) {
-      console.log("  ⚠️ Company not found via metadata, trying whopCompanyId");
+    if (!company && whopCompanyId) {
+      console.log("  ⚠️ Company not found via metadata, trying whopCompanyId:", whopCompanyId);
       company = await ctx.runQuery(
         api.companies.queries.getCompanyByWhopId,
         { whopCompanyId }
@@ -140,24 +144,44 @@ export const handlePaymentSucceeded = action({
     }
 
     if (!company) {
-      console.error("❌ No company found for Whop company ID:", whopCompanyId);
-      if (companyId) {
-        console.error("  Also tried metadata companyId:", companyId);
-      }
-      throw new Error(`Company not found for whopCompanyId: ${whopCompanyId}`);
+      // Non-fatal: the direct activation may have already handled this
+      console.error("❌ No company found for webhook. Metadata companyId:", companyId, "whopCompanyId:", whopCompanyId);
+      console.error("  This is OK if the frontend already activated the plan directly.");
+      return {
+        success: false,
+        planName: plan.name,
+        reason: "company_not_found",
+      };
     }
 
     console.log("  ✅ Found company:", company.name);
 
-    // Step 3: Update company plan (and clear any scheduled downgrade)
-    await ctx.runMutation(api.billing.mutations.updateCompanyPlan, {
-      companyId: company._id,
-      newPlanId: plan._id,
-      whopMembershipId: membershipId,
-      lastPaymentAt: paidAt * 1000, // Convert to milliseconds
-      isRenewal, // Pass renewal flag
-      clearScheduledChange: true, // Cancel pending downgrade if re-subscribing
-    });
+    // Step 3: Check if plan was already activated directly by the frontend
+    // (idempotent - skip update if already on the correct plan)
+    if (company.planId === plan._id && company.billingStatus === "active" && !isRenewal) {
+      console.log("  ℹ️ Plan already activated (likely by direct activation), updating membership ID only");
+      // Still update the membership ID since the webhook has it
+      if (membershipId) {
+        await ctx.runMutation(api.billing.mutations.updateCompanyPlan, {
+          companyId: company._id,
+          newPlanId: plan._id,
+          whopMembershipId: membershipId,
+          lastPaymentAt: paidAt ? paidAt * 1000 : Date.now(),
+          isRenewal: false,
+          clearScheduledChange: true,
+        });
+      }
+    } else {
+      // Step 4: Update company plan (and clear any scheduled downgrade)
+      await ctx.runMutation(api.billing.mutations.updateCompanyPlan, {
+        companyId: company._id,
+        newPlanId: plan._id,
+        whopMembershipId: membershipId,
+        lastPaymentAt: paidAt ? paidAt * 1000 : Date.now(),
+        isRenewal,
+        clearScheduledChange: true,
+      });
+    }
 
     console.log("  ✅ Updated company plan to:", plan.name);
 

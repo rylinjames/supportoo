@@ -28,34 +28,33 @@ export function PlanCard({
     plan.displayName || plan.name.charAt(0).toUpperCase() + plan.name.slice(1) + " Plan";
   const priceInDollars = (plan.price / 100).toFixed(0);
 
-  // Define features for each plan
-  const getFeatures = (planName: string) => {
-    switch (planName) {
-      case "free":
-        return ["100 AI responses/month", "Basic AI model", "Email support"];
-      case "pro":
-        return [
-          "Everything in Free Plan",
-          "5,000 AI responses/month",
-          "Advanced AI model",
-          "Unlimited templates",
-          "Insights & analytics",
-          "Priority support",
-        ];
-      case "elite":
-        return [
-          "Everything in Pro Plan",
-          "25,000 AI responses/month",
-          "Premium AI model",
-          "File attachments",
-          "Custom handoff triggers",
-        ];
-      default:
-        return [];
-    }
+  // Build features dynamically from plan data
+  const getFeatures = (p: Plan) => {
+    const items: string[] = [];
+
+    if (p.name === "pro") items.push("Everything in Free Plan");
+    if (p.name === "elite") items.push("Everything in Pro Plan");
+
+    items.push(`${p.aiResponsesPerMonth.toLocaleString()} AI responses/month`);
+
+    // AI model tier label
+    if (p.name === "elite") items.push("Premium AI model");
+    else if (p.name === "pro") items.push("Advanced AI model");
+    else items.push("Basic AI model");
+
+    if (p.hasTemplates) items.push("Unlimited templates");
+    if (p.hasFileAttachments) items.push("File attachments");
+    if (p.hasInsights) items.push("Insights & analytics");
+    if (p.hasCustomTriggers) items.push("Custom handoff triggers");
+    if (p.hasPrioritySupport) items.push("Priority support");
+
+    // Free plan fallback
+    if (p.name === "free" && !p.hasPrioritySupport) items.push("Email support");
+
+    return items;
   };
 
-  const features = getFeatures(plan.name);
+  const features = getFeatures(plan);
 
   const getButtonText = () => {
     if (isCurrent) {

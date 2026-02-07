@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -48,7 +48,7 @@ interface NavSection {
 interface MobileSidebarSectionProps {
   section: NavSection;
   isActiveRoute: (route: string) => boolean;
-  onNavigate: () => void;
+  onNavigate: (route: string) => void;
 }
 
 function MobileSidebarSection({ section, isActiveRoute, onNavigate }: MobileSidebarSectionProps) {
@@ -78,14 +78,14 @@ function MobileSidebarSection({ section, isActiveRoute, onNavigate }: MobileSide
         )}
       >
         {section.items.map((item) => (
-          <div key={item.id} onClick={onNavigate}>
+          <div key={item.id}>
             <SidebarItem
               icon={item.icon}
               label={item.label}
               isCollapsed={false}
               badge={item.badge}
               active={isActiveRoute(item.route)}
-              href={item.route}
+              onClick={() => onNavigate(item.route)}
             />
           </div>
         ))}
@@ -103,6 +103,7 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { userData, getCurrentRole } = useUser();
 
   const currentRole = getCurrentRole();
@@ -250,7 +251,11 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
                     <MobileSidebarSection
                       section={section}
                       isActiveRoute={isActiveRoute}
-                      onNavigate={() => setIsOpen(false)}
+                      onNavigate={(route: string) => {
+                        const basePath = pathname.split("/").slice(0, 3).join("/");
+                        router.push(basePath + route);
+                        setIsOpen(false);
+                      }}
                     />
                     {index < navSections.length - 1 && section.label && (
                       <Separator className="my-2" />

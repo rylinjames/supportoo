@@ -1242,7 +1242,7 @@ async function determineUserRoleWithVerification(
           {
             userId: existingUser._id,
             companyId: companyId,
-            role: "support",
+            newRole: "support",
           }
         );
         return "support";

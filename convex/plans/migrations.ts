@@ -64,3 +64,30 @@ export const setTicketooPlanIds = mutation({
     };
   },
 });
+
+/**
+ * Fix Free plan AI responses limit (was seeded as 20, should be 100)
+ * Run once with: npx convex run plans/migrations:fixFreePlanResponseLimit
+ */
+export const fixFreePlanResponseLimit = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const freePlan = await ctx.db
+      .query("plans")
+      .withIndex("by_name", (q) => q.eq("name", "free"))
+      .first();
+
+    if (!freePlan) {
+      console.log("❌ Free plan not found");
+      return { success: false };
+    }
+
+    const oldLimit = freePlan.aiResponsesPerMonth;
+    await ctx.db.patch(freePlan._id, {
+      aiResponsesPerMonth: 100,
+    });
+
+    console.log(`✅ Updated Free plan aiResponsesPerMonth: ${oldLimit} → 100`);
+    return { success: true, oldLimit, newLimit: 100 };
+  },
+});

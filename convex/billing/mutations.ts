@@ -135,6 +135,72 @@ export const executeScheduledPlanChange = mutation({
 });
 
 /**
+ * Directly activate a plan after successful in-app purchase.
+ *
+ * Called by the frontend after Whop's inAppPurchase returns success.
+ * This ensures the plan is activated immediately without waiting for
+ * the async webhook, which may fail or be delayed.
+ *
+ * The webhook handler is idempotent and will simply confirm the state
+ * if it arrives after this mutation has already run.
+ */
+export const directActivatePlan = mutation({
+  args: {
+    companyId: v.id("companies"),
+    planName: v.union(v.literal("pro"), v.literal("elite")),
+    receiptId: v.optional(v.string()),
+  },
+  handler: async (ctx, { companyId, planName, receiptId }) => {
+    const company = await ctx.db.get(companyId);
+    if (!company) {
+      throw new Error("Company not found");
+    }
+
+    // Look up the target plan
+    const plan = await ctx.db
+      .query("plans")
+      .withIndex("by_name", (q) => q.eq("name", planName))
+      .first();
+
+    if (!plan) {
+      throw new Error(`Plan "${planName}" not found`);
+    }
+
+    // Prevent no-op if already on this plan (idempotent)
+    if (company.planId === plan._id && company.billingStatus === "active") {
+      console.log(`  ℹ️ Company already on ${planName} plan, skipping activation`);
+      return { success: true, alreadyActive: true };
+    }
+
+    const now = Date.now();
+    const periodEnd = now + 30 * 24 * 60 * 60 * 1000; // 30 days
+
+    console.log(`  🚀 Direct plan activation: ${planName} for company ${company.name}`);
+
+    await ctx.db.patch(companyId, {
+      planId: plan._id,
+      billingStatus: "active",
+      lastPaymentAt: now,
+      currentPeriodStart: now,
+      currentPeriodEnd: periodEnd,
+
+      // Reset usage for new billing cycle
+      aiResponsesThisMonth: 0,
+      aiResponsesResetAt: periodEnd,
+      usageWarningSent: false,
+
+      // Clear any scheduled downgrades
+      scheduledPlanChangeAt: undefined,
+      scheduledPlanId: undefined,
+    });
+
+    console.log(`  ✅ Plan activated: ${planName} (receipt: ${receiptId || "none"})`);
+
+    return { success: true, alreadyActive: false };
+  },
+});
+
+/**
  * Record billing event for history
  */
 export const recordBillingEvent = mutation({

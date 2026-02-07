@@ -20,6 +20,7 @@ import type * as auth_verifyUsername from "../auth/verifyUsername.js";
 import type * as auth_whop from "../auth/whop.js";
 import type * as billing_actions from "../billing/actions.js";
 import type * as billing_crons from "../billing/crons.js";
+import type * as billing_migrations from "../billing/migrations.js";
 import type * as billing_mutations from "../billing/mutations.js";
 import type * as billing_queries from "../billing/queries.js";
 import type * as companies_mutations from "../companies/mutations.js";
@@ -94,6 +95,7 @@ declare const fullApi: ApiFromModules<{
   "auth/whop": typeof auth_whop;
   "billing/actions": typeof billing_actions;
   "billing/crons": typeof billing_crons;
+  "billing/migrations": typeof billing_migrations;
   "billing/mutations": typeof billing_mutations;
   "billing/queries": typeof billing_queries;
   "companies/mutations": typeof companies_mutations;

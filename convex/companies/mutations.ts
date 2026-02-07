@@ -701,8 +701,9 @@ export const updatePlan = mutation({
   args: {
     companyId: v.id("companies"),
     planId: v.id("plans"),
+    resetUsage: v.optional(v.boolean()),
   },
-  handler: async (ctx, { companyId, planId }) => {
+  handler: async (ctx, { companyId, planId, resetUsage }) => {
     const company = await ctx.db.get(companyId);
     if (!company) {
       throw new Error("Company not found");
@@ -713,14 +714,25 @@ export const updatePlan = mutation({
       throw new Error("Plan not found");
     }
 
+    const now = Date.now();
     const updates: any = {
       planId,
-      updatedAt: Date.now(),
+      updatedAt: now,
     };
 
     // If downgrading, reset AI model to first available in new plan
     if (!newPlan.aiModels.includes(company.selectedAiModel)) {
       updates.selectedAiModel = newPlan.aiModels[0];
+    }
+
+    // Reset usage counters when upgrading (e.g., auto-tier detection)
+    if (resetUsage) {
+      updates.aiResponsesThisMonth = 0;
+      updates.aiResponsesResetAt = now + 30 * 24 * 60 * 60 * 1000;
+      updates.usageWarningSent = false;
+      updates.billingStatus = "active";
+      updates.currentPeriodStart = now;
+      updates.currentPeriodEnd = now + 30 * 24 * 60 * 60 * 1000;
     }
 
     await ctx.db.patch(companyId, updates);

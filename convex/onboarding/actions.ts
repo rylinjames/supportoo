@@ -8,9 +8,146 @@
 
 import { action } from "../_generated/server";
 import { v } from "convex/values";
-import { type OurAppRole, getWhopSdk, getWhopInstance, fetchWhopUserInfo } from "../lib/whop";
+import { type OurAppRole, getWhopSdk, getWhopInstance, fetchWhopUserInfo, getWhopConfig } from "../lib/whop";
 import { api } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
+
+/**
+ * Detect and assign the correct subscription plan based on product ownership.
+ *
+ * Checks in order:
+ * 1. App owner (whopCompanyId matches WHOP_COMPANY_ID) → elite tier
+ * 2. Whop membership → map plan_id via whopPlans table → tier
+ * 3. Fallback → keep current plan (free by default)
+ *
+ * This implements the "Calloo model" where subscriptions are tied to products.
+ * When a company installs the app, we detect which product they own and grant
+ * them the corresponding tier.
+ */
+async function detectAndAssignPlan(
+  ctx: any,
+  companyId: Id<"companies">,
+  whopCompanyId: string
+): Promise<void> {
+  const appOwnerCompanyId = process.env.WHOP_COMPANY_ID || process.env.NEXT_PUBLIC_WHOP_COMPANY_ID;
+
+  // Step 1: App owner gets elite tier automatically
+  if (appOwnerCompanyId && whopCompanyId === appOwnerCompanyId) {
+    console.log(`[detectAndAssignPlan] Company ${whopCompanyId} is the app owner → elite tier`);
+
+    const elitePlan = await ctx.runQuery(api.plans.queries.getPlanByName, { name: "elite" });
+    if (!elitePlan) {
+      console.error(`[detectAndAssignPlan] Elite plan not found in database`);
+      return;
+    }
+
+    const company = await ctx.runQuery(api.companies.queries.getCompanyById, { companyId });
+    if (!company) return;
+
+    // Only update if not already on elite
+    if (company.planId !== elitePlan._id) {
+      console.log(`[detectAndAssignPlan] Upgrading app owner from current plan to elite`);
+      await ctx.runMutation(api.companies.mutations.updatePlan, {
+        companyId,
+        planId: elitePlan._id,
+        resetUsage: true,
+      });
+    }
+    return;
+  }
+
+  // Step 2: Check Whop memberships for tier detection
+  try {
+    const { apiKey } = getWhopConfig();
+
+    console.log(`[detectAndAssignPlan] Checking memberships for company ${whopCompanyId}`);
+
+    const membershipsResponse = await fetch(
+      `https://api.whop.com/api/v5/app/memberships?company_id=${whopCompanyId}&valid=true`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+
+    if (!membershipsResponse.ok) {
+      console.log(`[detectAndAssignPlan] Memberships API returned ${membershipsResponse.status}`);
+      return;
+    }
+
+    const data = await membershipsResponse.json();
+    const memberships = data.data || [];
+    console.log(`[detectAndAssignPlan] Found ${memberships.length} active memberships`);
+
+    if (memberships.length === 0) return;
+
+    // Find the highest tier from all memberships
+    const tierHierarchy: Record<string, number> = { free: 0, pro: 1, elite: 2 };
+    let highestTier: string | null = null;
+    let highestTierLevel = 0;
+
+    for (const membership of memberships) {
+      const whopPlanId = membership.plan_id;
+      if (!whopPlanId) continue;
+
+      const whopPlan = await ctx.runQuery(api.whopPlans.queries.getWhopPlanByWhopId, {
+        whopPlanId,
+      });
+
+      if (whopPlan?.planTier) {
+        const tierLevel = tierHierarchy[whopPlan.planTier] || 0;
+        if (tierLevel > highestTierLevel) {
+          highestTierLevel = tierLevel;
+          highestTier = whopPlan.planTier;
+        }
+      }
+    }
+
+    if (!highestTier) {
+      console.log(`[detectAndAssignPlan] No tier mapping found for any membership`);
+      return;
+    }
+
+    console.log(`[detectAndAssignPlan] Highest tier detected: ${highestTier}`);
+
+    // Look up the internal plan
+    const targetPlan = await ctx.runQuery(api.plans.queries.getPlanByName, {
+      name: highestTier,
+    });
+
+    if (!targetPlan) {
+      console.error(`[detectAndAssignPlan] Plan "${highestTier}" not found in database`);
+      return;
+    }
+
+    const company = await ctx.runQuery(api.companies.queries.getCompanyById, { companyId });
+    if (!company) return;
+
+    // Only upgrade (never downgrade via auto-detection)
+    const currentPlan = await ctx.runQuery(api.plans.queries.getPlanById, {
+      planId: company.planId,
+    });
+    const currentTierLevel = currentPlan ? (tierHierarchy[currentPlan.name] || 0) : 0;
+
+    if (highestTierLevel > currentTierLevel) {
+      console.log(`[detectAndAssignPlan] Upgrading company from ${currentPlan?.name || "unknown"} to ${highestTier}`);
+      await ctx.runMutation(api.companies.mutations.updatePlan, {
+        companyId,
+        planId: targetPlan._id,
+        resetUsage: true,
+      });
+    } else {
+      console.log(`[detectAndAssignPlan] Company already on ${currentPlan?.name || "unknown"}, no upgrade needed`);
+    }
+  } catch (error) {
+    // Don't fail onboarding if tier detection fails
+    console.error(`[detectAndAssignPlan] Error during tier detection:`, error);
+  }
+}
 
 /**
  * Fetch the Whop business/store name from the Whop API
@@ -754,6 +891,18 @@ export const onboardUser = action({
         } else if (!correctBusinessName && looksLikeExperienceName) {
           console.log(`[onboardUser] ⚠️ Company name "${currentName}" looks like experience name but couldn't fetch correct name`);
         }
+      }
+
+      // Step 4.6: Auto-detect and assign plan based on product ownership
+      // This implements the "Calloo model" - subscriptions tied to products.
+      // App owners get elite tier, customers get tier based on their Whop membership.
+      await detectAndAssignPlan(ctx, company._id, whopCompanyId);
+      // Re-fetch company in case plan was updated
+      company = await ctx.runQuery(api.companies.queries.getCompanyById, {
+        companyId: company._id,
+      });
+      if (!company) {
+        throw new Error("Failed to re-fetch company after plan detection");
       }
 
       // Step 5: Determine user's access level via Whop API

@@ -51,7 +51,7 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
 
     // Define allowed routes per role
     const customerAllowedRoutes = ["/customer-view"];
-    const supportAllowedRoutes = ["/", "/settings", "/customer-test", "/workspace"];
+    const supportAllowedRoutes = ["/", "/settings", "/customer-test", "/workspace", "/ai-studio"];
 
     // Role-based route access control
     if (role === "customer") {
@@ -131,7 +131,7 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
         return;
       }
     } else if (role === "support") {
-      const supportAllowedRoutes = ["/", "/settings", "/customer-test", "/workspace"];
+      const supportAllowedRoutes = ["/", "/settings", "/customer-test", "/workspace", "/ai-studio"];
       if (!supportAllowedRoutes.includes(routeWithoutQuery)) {
         // Redirect to support dashboard (root)
         router.replace(`${baseUrl}/`);

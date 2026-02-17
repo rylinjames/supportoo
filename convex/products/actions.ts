@@ -367,16 +367,9 @@ async function syncSingleProduct(
   whopCompanyId: string,
   whopProduct: any
 ) {
-  // STRICT VALIDATION: Product MUST have a company_id
-  if (!whopProduct.company_id) {
-    throw new Error(
-      `Product ${whopProduct.id} is missing company_id field. ` +
-      `Cannot sync product without knowing which company it belongs to.`
-    );
-  }
-
-  // STRICT VALIDATION: Product MUST belong to the expected company
-  if (whopProduct.company_id !== whopCompanyId) {
+  // Validate company_id if present (v1 API doesn't return it, but v5 does)
+  // v1 scopes by company_id in the query param, so results are already correct
+  if (whopProduct.company_id && whopProduct.company_id !== whopCompanyId) {
     throw new Error(
       `Product ${whopProduct.id} belongs to company ${whopProduct.company_id}, ` +
       `not ${whopCompanyId}. Refusing to sync to prevent cross-contamination.`
@@ -390,7 +383,7 @@ async function syncSingleProduct(
   const productData = {
     companyId,
     whopProductId: whopProduct.id,
-    whopCompanyId: whopProduct.company_id, // Use the verified company_id directly, no fallback
+    whopCompanyId: whopProduct.company_id || whopCompanyId, // v1 doesn't return company_id, use known value
     title: whopProduct.title || whopProduct.name || "Untitled Product",
     description,
 

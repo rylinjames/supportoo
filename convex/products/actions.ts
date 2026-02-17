@@ -117,7 +117,7 @@ export const syncProducts = action({
       // Per Whop docs: "Use app api keys when you are building an app and need to access data on companies that have installed your app"
       // Access company-specific data by specifying company_id parameter
       const { apiKey } = getWhopConfig();
-      console.log(`[syncProducts] Using App API key with company_id parameter`);
+      console.log(`[syncProducts] Using App API key with v1/products endpoint`);
 
       // Mark all existing products as outdated before sync
       const outdatedCount = await ctx.runMutation(
@@ -126,8 +126,8 @@ export const syncProducts = action({
       );
       console.log(`[syncProducts] Marked ${outdatedCount} existing products as outdated`);
 
-      // Fetch products from Whop API
-      let allProducts = [];
+      // Fetch products from Whop v1 API (v1 returns sellable products with headlines)
+      let allProducts: any[] = [];
 
       try {
         console.log(`[syncProducts] ========================================`);
@@ -136,17 +136,21 @@ export const syncProducts = action({
         console.log(`[syncProducts] Company Name: ${company.name}`);
         console.log(`[syncProducts] Company ID (Convex): ${companyId}`);
         console.log(`[syncProducts] Company ID (Whop): ${company.whopCompanyId}`);
-        console.log(`[syncProducts] Auth Method: APP_API_KEY with v5/app/products`);
+        console.log(`[syncProducts] Auth Method: APP_API_KEY with v1/products`);
         console.log(`[syncProducts] ----------------------------------------`);
 
-        let page = 1;
-        let hasMore = true;
+        let cursor: string | null = null;
+        let pageNum = 0;
 
-        while (hasMore) {
-          // Use v5 /app/products endpoint - returns ALL products from ALL installed companies
-          // Filter by company_id in the response to get only this company's products
-          // This works automatically for any company that has installed the app
-          const url: string = `https://api.whop.com/api/v5/app/products?page=${page}&per=100`;
+        while (true) {
+          // Use v1 /products endpoint with company_id — returns the company's sellable products
+          // v1 includes headline field and uses the same product IDs as v1 plans
+          const params = new URLSearchParams({
+            company_id: company.whopCompanyId,
+            first: "50",
+          });
+          if (cursor) params.set("after", cursor);
+          const url: string = `https://api.whop.com/api/v1/products?${params.toString()}`;
 
           console.log(`[syncProducts] Fetching from: ${url}`);
 
@@ -183,87 +187,56 @@ export const syncProducts = action({
           const data: any = await response.json();
           const fetchedProducts: any[] = data.data || [];
 
-          // Filter products for THIS company only
-          const companyProducts = fetchedProducts.filter(
-            (p: any) => p.company_id === company.whopCompanyId
-          );
+          // v1 results are already scoped to company_id — no post-filtering needed
+          allProducts.push(...fetchedProducts);
+          console.log(`[syncProducts] Fetched ${fetchedProducts.length} products (page ${pageNum + 1})`);
 
-          if (companyProducts.length > 0) {
-            allProducts.push(...companyProducts);
-            console.log(`[syncProducts] Fetched ${fetchedProducts.length} total, ${companyProducts.length} for this company (page ${page})`);
+          // v1 cursor-based pagination
+          const endCursor = data.page_info?.end_cursor;
+          if (endCursor && fetchedProducts.length > 0) {
+            cursor = endCursor;
+            pageNum++;
           } else {
-            console.log(`[syncProducts] Fetched ${fetchedProducts.length} total, 0 for this company (page ${page})`);
-          }
-
-          // Check pagination
-          if (data.pagination?.next_page) {
-            page++;
-            hasMore = true;
-          } else {
-            hasMore = false;
+            break;
           }
 
           // Safety limit
-          if (page > 20) {
+          if (pageNum >= 20) {
             console.log(`[syncProducts] Reached page limit of 20`);
             break;
           }
         }
-        
+
         console.log(`[syncProducts] ----------------------------------------`);
         console.log(`[syncProducts] Total products fetched: ${allProducts.length}`);
 
-        // Log company IDs of fetched products to verify multi-tenancy
         if (allProducts.length > 0) {
-          // Strict validation: products MUST have company_id, no fallback to 'unknown'
-          const companyIds = [...new Set(allProducts.map((p: any) => p.company_id || 'MISSING'))];
-          console.log(`[syncProducts] 🏢 Product Company IDs: ${companyIds.join(', ')}`);
-          console.log(`[syncProducts] Expected Company ID: ${company.whopCompanyId}`);
-
-          // Check for products with missing company_id
-          const hasMissingCompanyId = companyIds.includes('MISSING');
-          if (hasMissingCompanyId) {
-            console.log(`[syncProducts] ⚠️ WARNING: Some products are missing company_id field`);
-            const missingCount = allProducts.filter((p: any) => !p.company_id).length;
-            console.log(`[syncProducts] Products without company_id: ${missingCount}`);
-          }
-
-          // Strict check: ALL products must match expected company ID exactly
-          // No longer allowing 'unknown' to pass - this was a security hole
-          const allMatch = companyIds.every(id => id === company.whopCompanyId);
-          if (allMatch) {
-            console.log(`[syncProducts] ✅ MULTI-TENANCY CHECK PASSED - All products belong to correct company`);
-          } else {
-            console.log(`[syncProducts] ❌ MULTI-TENANCY CHECK FAILED - Products belong to wrong company!`);
-            console.log(`[syncProducts] Aborting sync to prevent data corruption.`);
-
-            // ABORT - Don't sync wrong company's products
+          // Quick multi-tenancy check: v1 scopes by company_id, but verify
+          const wrongCompany = allProducts.filter((p: any) => p.company_id && p.company_id !== company.whopCompanyId);
+          if (wrongCompany.length > 0) {
+            console.error(`[syncProducts] ❌ Found ${wrongCompany.length} products from wrong company — aborting`);
             return {
               success: false,
               syncedCount: 0,
               deletedCount: 0,
-              errors: [
-                `Multi-tenancy violation: API returned products from ${companyIds.join(', ')} but expected ${company.whopCompanyId}. ` +
-                `${hasMissingCompanyId ? 'Some products are missing company_id. ' : ''}` +
-                `Please sync from the UI to use your authentication token.`
-              ],
+              errors: [`Multi-tenancy violation: ${wrongCompany.length} products belong to wrong company`],
             };
           }
+          console.log(`[syncProducts] ✅ All products belong to ${company.whopCompanyId}`);
 
-          // Log first 3 products for debugging
-          console.log(`[syncProducts] Sample products:`);
+          // Log sample products for debugging
           allProducts.slice(0, 3).forEach((p: any, i: number) => {
-            console.log(`[syncProducts]   ${i + 1}. "${p.title || p.name}" (company: ${p.company_id || p.companyId})`);
+            console.log(`[syncProducts]   ${i + 1}. "${p.title || p.name}" (${p.id})`);
           });
         }
         console.log(`[syncProducts] ========================================`);
-        
+
       } catch (error) {
         console.error(`[syncProducts] Error fetching products:`, error);
-        
+
         // Don't throw on empty response - this is expected if no products exist
-        if (error instanceof Error && 
-            (error.message.includes('404') || 
+        if (error instanceof Error &&
+            (error.message.includes('404') ||
              error.message.includes('not found') ||
              error.message.includes('no products'))) {
           console.log(`[syncProducts] No products found`);
@@ -349,74 +322,6 @@ export const syncProducts = action({
       );
 
       console.log(`[syncProducts] Sync complete. Synced: ${syncedProductIds.length}, Deleted: ${deletedCount}, Errors: ${errors.length}`);
-
-      // Enrich products with v1 headline data (v5 doesn't return headlines)
-      console.log(`[syncProducts] Enriching products with v1 headline data...`);
-      try {
-        const { apiKey } = getWhopConfig();
-        let v1Cursor: string | null = null;
-        const headlineMap = new Map<string, string>();
-
-        // Fetch all v1 products for this company to get headlines
-        while (true) {
-          const v1Params = new URLSearchParams({
-            company_id: company.whopCompanyId,
-            first: "50",
-          });
-          if (v1Cursor) v1Params.set("after", v1Cursor);
-
-          const v1Res = await fetchWithRetry(
-            `https://api.whop.com/api/v1/products?${v1Params.toString()}`,
-            {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${apiKey}`,
-                Accept: "application/json",
-              },
-            }
-          );
-
-          if (!v1Res.ok) break;
-          const v1Data = await v1Res.json();
-          const v1Products = v1Data.data || [];
-
-          for (const vp of v1Products) {
-            if (vp.headline && vp.headline.trim()) {
-              headlineMap.set(vp.id, vp.headline.trim());
-            }
-          }
-
-          const endCursor = v1Data.page_info?.end_cursor;
-          if (endCursor && v1Products.length > 0) {
-            v1Cursor = endCursor;
-          } else {
-            break;
-          }
-        }
-
-        // Update products that have empty descriptions with v1 headlines
-        if (headlineMap.size > 0) {
-          const currentProducts = await ctx.runQuery(
-            api.products.queries.getCompanyProducts,
-            { companyId, includeHidden: true, includeInactive: true }
-          );
-
-          let enrichedCount = 0;
-          for (const prod of currentProducts) {
-            const headline = headlineMap.get(prod.whopProductId);
-            if (headline && (!prod.description || prod.description.trim() === "")) {
-              await ctx.runMutation(api.products.mutations.updateProductDescription, {
-                productId: prod._id,
-                description: headline,
-              });
-              enrichedCount++;
-            }
-          }
-          console.log(`[syncProducts] Enriched ${enrichedCount} products with v1 headlines (${headlineMap.size} headlines available)`);
-        }
-      } catch (enrichError) {
-        console.error(`[syncProducts] Headline enrichment failed (non-critical):`, enrichError);
-      }
 
       // After syncing products, also sync plans to get accurate pricing
       // Plans contain the actual pricing info (products API doesn't return prices)
@@ -672,17 +577,21 @@ export const testWhopConnection = action({
       // Get App API key for multi-tenant product access
       const { apiKey } = getWhopConfig();
 
-      console.log(`[testWhopConnection] Using App API key with v5/app/products`);
+      console.log(`[testWhopConnection] Using App API key with v1/products`);
       console.log(`[testWhopConnection] Looking for company_id: ${company.whopCompanyId}`);
 
-      // Paginate through all pages to find this company's products
+      // Fetch this company's products via v1 API
       let allCompanyProducts: any[] = [];
-      let page = 1;
-      let hasMore = true;
-      let totalFetched = 0;
+      let cursor: string | null = null;
+      let pageNum = 0;
 
-      while (hasMore && page <= 10) { // Limit to 10 pages for test
-        const url = `https://api.whop.com/api/v5/app/products?page=${page}&per=100`;
+      while (pageNum < 10) { // Limit to 10 pages for test
+        const params = new URLSearchParams({
+          company_id: company.whopCompanyId,
+          first: "50",
+        });
+        if (cursor) params.set("after", cursor);
+        const url = `https://api.whop.com/api/v1/products?${params.toString()}`;
 
         // Use fetchWithRetry for resilience against transient failures
         const response = await fetchWithRetry(url, {
@@ -703,24 +612,21 @@ export const testWhopConnection = action({
 
         const data = await response.json();
         const fetchedProducts = data.data || [];
-        totalFetched += fetchedProducts.length;
 
-        // Filter for this company's products
-        const companyProducts = fetchedProducts.filter((p: any) => p.company_id === company.whopCompanyId);
-        if (companyProducts.length > 0) {
-          allCompanyProducts.push(...companyProducts);
-          console.log(`[testWhopConnection] Page ${page}: Found ${companyProducts.length} products for this company`);
-        }
+        // v1 results are already scoped to company_id
+        allCompanyProducts.push(...fetchedProducts);
 
-        // Check pagination
-        if (data.pagination?.next_page) {
-          page++;
+        // v1 cursor-based pagination
+        const endCursor = data.page_info?.end_cursor;
+        if (endCursor && fetchedProducts.length > 0) {
+          cursor = endCursor;
+          pageNum++;
         } else {
-          hasMore = false;
+          break;
         }
       }
 
-      console.log(`[testWhopConnection] Total fetched: ${totalFetched}, For this company: ${allCompanyProducts.length}`);
+      console.log(`[testWhopConnection] Total fetched for this company: ${allCompanyProducts.length}`);
 
       return {
         success: true,

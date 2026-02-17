@@ -11,7 +11,6 @@
 import type * as agentPhrases from "../agentPhrases.js";
 import type * as agentSettings from "../agentSettings.js";
 import type * as ai_assistants from "../ai/assistants.js";
-import type * as ai_buildSystemPrompt from "../ai/buildSystemPrompt.js";
 import type * as ai_chatCompletions from "../ai/chatCompletions.js";
 import type * as ai_debugVectorStore from "../ai/debugVectorStore.js";
 import type * as ai_generateResponse from "../ai/generateResponse.js";
@@ -86,7 +85,6 @@ declare const fullApi: ApiFromModules<{
   agentPhrases: typeof agentPhrases;
   agentSettings: typeof agentSettings;
   "ai/assistants": typeof ai_assistants;
-  "ai/buildSystemPrompt": typeof ai_buildSystemPrompt;
   "ai/chatCompletions": typeof ai_chatCompletions;
   "ai/debugVectorStore": typeof ai_debugVectorStore;
   "ai/generateResponse": typeof ai_generateResponse;

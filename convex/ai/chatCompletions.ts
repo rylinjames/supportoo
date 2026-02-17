@@ -333,11 +333,11 @@ export const generateChatResponse = action({
         });
 
         // Helper function to format price - handles FREE plans correctly
-        // Note: Whop API returns prices in DOLLARS, not cents
-        const formatPrice = (priceInDollars: number | undefined, currency: string) => {
-          if (priceInDollars === undefined || priceInDollars === null) return null;
-          if (priceInDollars === 0) return "Free";
-          const price = priceInDollars.toFixed(2);
+        // Prices are stored in cents (e.g. 2999 = $29.99)
+        const formatPrice = (priceInCents: number | undefined, currency: string) => {
+          if (priceInCents === undefined || priceInCents === null) return null;
+          if (priceInCents === 0) return "Free";
+          const price = (priceInCents / 100).toFixed(2);
           return `${currency.toUpperCase()} $${price}`;
         };
 

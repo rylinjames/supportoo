@@ -212,13 +212,13 @@ export const syncPlans = action({
             whopCompanyId: company.whopCompanyId,
             title: whopPlan.title || whopPlan.name || "Untitled Plan",
             description: whopPlan.description || undefined,
-            // Handle prices - store raw float values (Whop returns dollars, e.g. 29.99)
-            // Do NOT round — rounding turns $29.99 into $30.00
+            // Handle prices - Whop v1 returns dollars (e.g. 29.99), store in cents (2999)
+            // Frontend and AI context both expect cents and divide by 100 for display
             initialPrice: whopPlan.initial_price !== undefined && whopPlan.initial_price !== null
-              ? whopPlan.initial_price
+              ? Math.round(whopPlan.initial_price * 100)
               : undefined,
             renewalPrice: whopPlan.renewal_price !== undefined && whopPlan.renewal_price !== null
-              ? whopPlan.renewal_price
+              ? Math.round(whopPlan.renewal_price * 100)
               : undefined,
             currency: (whopPlan.currency || "usd").toLowerCase(),
             billingPeriod: whopPlan.billing_period || undefined,

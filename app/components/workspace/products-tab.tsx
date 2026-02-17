@@ -153,9 +153,9 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
   const formatPrice = (price: number, currency: string = "USD") => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      currency: currency.toUpperCase(),
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(price / 100);
   };
 

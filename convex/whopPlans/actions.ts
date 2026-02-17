@@ -96,18 +96,24 @@ export const syncPlans = action({
       // Get App API key
       const { apiKey } = getWhopConfig();
 
-      // Fetch plans from Whop API using v5 endpoint (same as products)
+      // Fetch plans from Whop API v1 (v5 has no plans endpoint)
+      // v1 uses cursor-based pagination and takes company_id as a query param
       let allPlans: any[] = [];
-      let page = 1;
-      let hasMore = true;
+      let cursor: string | null = null;
+      let pageNum = 0;
 
-      while (hasMore) {
-        // Use v5 /app/plans endpoint - returns plans from all installed companies
-        const url = `https://api.whop.com/api/v5/app/plans?page=${page}&per=100`;
+      while (true) {
+        const params = new URLSearchParams({
+          company_id: company.whopCompanyId,
+          first: "50",
+        });
+        if (cursor) {
+          params.set("after", cursor);
+        }
+        const url = `https://api.whop.com/api/v1/plans?${params.toString()}`;
 
         console.log(`[syncPlans] Fetching from: ${url}`);
 
-        // Use fetchWithRetry for resilience against transient failures
         const response = await fetchWithRetry(url, {
           method: "GET",
           headers: {
@@ -141,27 +147,23 @@ export const syncPlans = action({
         const data = await response.json();
         const fetchedPlans = data.data || [];
 
-        // Filter plans for THIS company only (same pattern as products)
-        const companyPlans = fetchedPlans.filter(
-          (p: any) => p.company_id === company.whopCompanyId
-        );
+        // v1 results are already scoped to company_id — no filtering needed
+        // Skip orphan plans (no linked product) as they're not useful for AI context
+        const linkedPlans = fetchedPlans.filter((p: any) => p.product !== null);
+        allPlans.push(...linkedPlans);
+        console.log(`[syncPlans] Fetched ${fetchedPlans.length} plans, ${linkedPlans.length} with products (page ${pageNum + 1})`);
 
-        if (companyPlans.length > 0) {
-          allPlans.push(...companyPlans);
-          console.log(`[syncPlans] Fetched ${fetchedPlans.length} total, ${companyPlans.length} for this company (page ${page})`);
+        // v1 cursor-based pagination
+        const endCursor = data.page_info?.end_cursor;
+        if (endCursor && fetchedPlans.length > 0) {
+          cursor = endCursor;
+          pageNum++;
         } else {
-          console.log(`[syncPlans] Fetched ${fetchedPlans.length} total, 0 for this company (page ${page})`);
-        }
-
-        // Check pagination
-        if (data.pagination?.next_page) {
-          page++;
-        } else {
-          hasMore = false;
+          break;
         }
 
         // Safety limit
-        if (page > 20) {
+        if (pageNum >= 20) {
           console.log(`[syncPlans] Reached page limit of 20`);
           break;
         }
@@ -187,6 +189,9 @@ export const syncPlans = action({
       let syncedCount = 0;
       const errors: string[] = [];
       const syncedPlanIds: string[] = [];
+      // Track all known plan IDs from API (not just successfully synced)
+      // to avoid deleting plans that failed to sync as "stale"
+      const knownWhopPlanIds: string[] = allPlans.map((p: any) => p.id);
 
       for (const whopPlan of allPlans) {
         try {
@@ -207,12 +212,13 @@ export const syncPlans = action({
             whopCompanyId: company.whopCompanyId,
             title: whopPlan.title || whopPlan.name || "Untitled Plan",
             description: whopPlan.description || undefined,
-            // Handle prices - keep 0 as 0 (for Free plans), only undefined if not present
+            // Handle prices - store raw float values (Whop returns dollars, e.g. 29.99)
+            // Do NOT round — rounding turns $29.99 into $30.00
             initialPrice: whopPlan.initial_price !== undefined && whopPlan.initial_price !== null
-              ? Math.round(whopPlan.initial_price)
+              ? whopPlan.initial_price
               : undefined,
             renewalPrice: whopPlan.renewal_price !== undefined && whopPlan.renewal_price !== null
-              ? Math.round(whopPlan.renewal_price)
+              ? whopPlan.renewal_price
               : undefined,
             currency: (whopPlan.currency || "usd").toLowerCase(),
             billingPeriod: whopPlan.billing_period || undefined,
@@ -240,9 +246,11 @@ export const syncPlans = action({
       }
 
       // Delete plans that are no longer in Whop
+      // Use knownWhopPlanIds (all plans from API) not syncedPlanIds (only successfully synced)
+      // to avoid deleting plans that exist in Whop but failed to sync
       const deletedCount = await ctx.runMutation(
         api.whopPlans.mutations.deleteStalePlans,
-        { companyId, activeWhopPlanIds: syncedPlanIds }
+        { companyId, activeWhopPlanIds: knownWhopPlanIds }
       );
 
       console.log(
@@ -298,9 +306,9 @@ export const testPlansConnection = action({
 
       const { apiKey } = getWhopConfig();
 
-      // Use v5 /app/plans endpoint (same as products)
+      // Use v1 /plans endpoint (v5 has no plans endpoint)
       const response = await fetchWithRetry(
-        `https://api.whop.com/api/v5/app/plans?page=1&per=100`,
+        `https://api.whop.com/api/v1/plans?company_id=${company.whopCompanyId}&first=10`,
         {
           method: "GET",
           headers: {
@@ -320,10 +328,7 @@ export const testPlansConnection = action({
       }
 
       const data = await response.json();
-      // Filter plans for this company only
-      const companyPlans = (data.data || []).filter(
-        (p: any) => p.company_id === company.whopCompanyId
-      );
+      const companyPlans = data.data || [];
 
       return {
         success: true,
@@ -335,7 +340,7 @@ export const testPlansConnection = action({
           currency: p.currency,
           type: p.plan_type,
           visibility: p.visibility,
-          productId: p.product?.id || p.product_id,
+          productId: p.product?.id,
         })),
       };
     } catch (err) {

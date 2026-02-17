@@ -213,6 +213,23 @@ export const toggleProductAIInclusion = mutation({
 });
 
 /**
+ * Update a product's description (used for v1 headline enrichment)
+ */
+export const updateProductDescription = mutation({
+  args: {
+    productId: v.id("products"),
+    description: v.string(),
+  },
+  handler: async (ctx, { productId, description }) => {
+    await ctx.db.patch(productId, {
+      description,
+      updatedAt: Date.now(),
+    });
+    return { success: true };
+  },
+});
+
+/**
  * Exclude specific products from sync (add to blocklist)
  *
  * Products in the blocklist won't be synced from Whop.

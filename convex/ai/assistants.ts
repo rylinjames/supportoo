@@ -187,6 +187,18 @@ You have access to the company's knowledge base via file_search. This is for YOU
 
 `;
 
+  // 6. Formatting rules - keep responses clean and conversational
+  instructions += `## Formatting Rules
+
+- Write in plain, conversational language. Do NOT use markdown formatting like **bold**, *italics*, or # headings.
+- Do NOT wrap words in asterisks. Just write naturally.
+- Do NOT add parenthetical asides like "(e.g., ...)" or "(such as ...)". If context is needed, work it into the sentence naturally.
+- Keep responses clean and easy to read without any special formatting characters.
+- Use simple line breaks to separate ideas if needed, but avoid bullet points or numbered lists unless the customer specifically asks for a list.
+
+`;
+
+
   return instructions;
 }
 

@@ -378,17 +378,8 @@ ${products.map((product: any) => {
         }
       }
     }
-  } else if (product.price && product.currency) {
-    // Fallback to product price if no plans (legacy)
-    // Note: Whop API returns prices in DOLLARS, not cents
-    const price = product.price.toFixed(2);
-    productInfo += ` - ${product.currency} $${price}`;
-
-    if (product.accessType === "subscription" && product.billingPeriod) {
-      productInfo += ` per ${product.billingPeriod.replace('ly', '')}`;
-    } else if (product.accessType === "lifetime") {
-      productInfo += ` (lifetime access)`;
-    }
+  } else {
+    productInfo += `\n  Pricing: Contact for details`;
   }
 
   // Include more of the description (increased from 200 to 500 chars)
@@ -508,6 +499,9 @@ Response style:
 - Focus on solving the immediate support issue
 - Professional but friendly tone
 - Never mention being an AI
+- Do NOT use markdown formatting like **bold**, *italics*, or # headings. Just write naturally in plain text.
+- Do NOT add parenthetical asides like "(e.g., ...)" or "(such as ...)". Work any needed context into the sentence naturally.
+- Avoid bullet points or numbered lists unless the customer specifically asks for a list.
 
 ${company.aiSystemPrompt || ""}` : 
         `${WHOP_CONTEXT}

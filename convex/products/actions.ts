@@ -350,6 +350,74 @@ export const syncProducts = action({
 
       console.log(`[syncProducts] Sync complete. Synced: ${syncedProductIds.length}, Deleted: ${deletedCount}, Errors: ${errors.length}`);
 
+      // Enrich products with v1 headline data (v5 doesn't return headlines)
+      console.log(`[syncProducts] Enriching products with v1 headline data...`);
+      try {
+        const { apiKey } = getWhopConfig();
+        let v1Cursor: string | null = null;
+        const headlineMap = new Map<string, string>();
+
+        // Fetch all v1 products for this company to get headlines
+        while (true) {
+          const v1Params = new URLSearchParams({
+            company_id: company.whopCompanyId,
+            first: "50",
+          });
+          if (v1Cursor) v1Params.set("after", v1Cursor);
+
+          const v1Res = await fetchWithRetry(
+            `https://api.whop.com/api/v1/products?${v1Params.toString()}`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                Accept: "application/json",
+              },
+            }
+          );
+
+          if (!v1Res.ok) break;
+          const v1Data = await v1Res.json();
+          const v1Products = v1Data.data || [];
+
+          for (const vp of v1Products) {
+            if (vp.headline && vp.headline.trim()) {
+              headlineMap.set(vp.id, vp.headline.trim());
+            }
+          }
+
+          const endCursor = v1Data.page_info?.end_cursor;
+          if (endCursor && v1Products.length > 0) {
+            v1Cursor = endCursor;
+          } else {
+            break;
+          }
+        }
+
+        // Update products that have empty descriptions with v1 headlines
+        if (headlineMap.size > 0) {
+          const currentProducts = await ctx.runQuery(
+            api.products.queries.getCompanyProducts,
+            { companyId, includeHidden: true, includeInactive: true }
+          );
+
+          let enrichedCount = 0;
+          for (const prod of currentProducts) {
+            const headline = headlineMap.get(prod.whopProductId);
+            if (headline && (!prod.description || prod.description.trim() === "")) {
+              await ctx.runMutation(api.products.mutations.updateProductDescription, {
+                productId: prod._id,
+                description: headline,
+              });
+              enrichedCount++;
+            }
+          }
+          console.log(`[syncProducts] Enriched ${enrichedCount} products with v1 headlines (${headlineMap.size} headlines available)`);
+        }
+      } catch (enrichError) {
+        console.error(`[syncProducts] Headline enrichment failed (non-critical):`, enrichError);
+      }
+
       // After syncing products, also sync plans to get accurate pricing
       // Plans contain the actual pricing info (products API doesn't return prices)
       console.log(`[syncProducts] Now syncing plans for pricing data...`);

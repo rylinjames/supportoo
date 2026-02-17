@@ -13,26 +13,30 @@ import { api } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 
 /**
- * Detect and assign the correct subscription plan based on product ownership.
+ * Detect and assign the correct subscription plan using Whop's checkAccess API.
  *
- * Uses the Whop products API to determine tier naturally:
- * 1. Fetch all app products, identify Ticketoo tier products
- * 2. If company OWNS any products (they created them) → highest tier (they're the app developer)
- * 3. If customer, check memberships → map product_id to tier
- * 4. Fallback → keep current plan (free by default)
+ * Implements the "Calloo model" — subscriptions tied to products:
+ * 1. Fetch all app products, identify Ticketoo tier products by name
+ * 2. For each tier product, call checkAccess(productId, userId) to see if user has access
+ * 3. App developers get access_level "admin" → always elite
+ * 4. Customers who purchased a tier get access_level "customer" → that tier
+ * 5. Fallback: product.company_id match (legacy) → elite
+ * 6. No access to any tier products → keep current plan
  *
- * No hardcoded company IDs — ownership is detected dynamically from the products API.
+ * This works for ALL cases: app developer on any company, paying customers, free users.
  */
 async function detectAndAssignPlan(
   ctx: any,
   companyId: Id<"companies">,
-  whopCompanyId: string
+  whopCompanyId: string,
+  whopUserId: string
 ): Promise<void> {
   try {
     const { apiKey } = getWhopConfig();
+    const whop = getWhopInstance();
     const tierHierarchy: Record<string, number> = { free: 0, pro: 1, elite: 2 };
 
-    console.log(`[detectAndAssignPlan] Detecting tier for company ${whopCompanyId}`);
+    console.log(`[detectAndAssignPlan] Detecting tier for company ${whopCompanyId}, user ${whopUserId}`);
 
     // Fetch all app products (paginated)
     let allProducts: any[] = [];
@@ -79,105 +83,73 @@ async function detectAndAssignPlan(
       }
     }
 
-    console.log(`[detectAndAssignPlan] Found ${Object.keys(productTierMap).length} Ticketoo tier products`);
+    const tierProductIds = Object.keys(productTierMap);
+    console.log(`[detectAndAssignPlan] Found ${tierProductIds.length} Ticketoo tier products`);
 
-    // Step 1: Check if this company OWNS any of the app's products
-    // Product owners (app developers) have their company_id on the products they created
-    const ownsProducts = allProducts.some(
-      (p: any) => p.company_id === whopCompanyId
-    );
-
-    if (ownsProducts) {
-      // They own the products — find the highest Ticketoo tier they own
-      let highestTier = "free";
-      let highestLevel = 0;
-
-      for (const product of allProducts) {
-        if (product.company_id !== whopCompanyId) continue;
-        const tier = productTierMap[product.id];
-        if (tier && (tierHierarchy[tier] || 0) > highestLevel) {
-          highestLevel = tierHierarchy[tier] || 0;
-          highestTier = tier;
-        }
-      }
-
-      // If they own products but no specific Ticketoo tier products matched,
-      // they still get elite since they're the app developer
-      if (highestLevel === 0) {
-        highestTier = "elite";
-      }
-
-      console.log(`[detectAndAssignPlan] Company OWNS ${allProducts.filter((p: any) => p.company_id === whopCompanyId).length} products → ${highestTier} tier`);
-
-      const targetPlan = await ctx.runQuery(api.plans.queries.getPlanByName, {
-        name: highestTier as "free" | "pro" | "elite",
-      });
-      if (!targetPlan) {
-        console.error(`[detectAndAssignPlan] Plan "${highestTier}" not found`);
-        return;
-      }
-
-      const company = await ctx.runQuery(api.companies.queries.getCompanyById, { companyId });
-      if (!company) return;
-
-      if (company.planId !== targetPlan._id) {
-        await ctx.runMutation(api.companies.mutations.updatePlan, {
-          companyId,
-          planId: targetPlan._id,
-          resetUsage: true,
-        });
-        console.log(`[detectAndAssignPlan] Upgraded product owner to ${highestTier}`);
-      }
+    if (tierProductIds.length === 0) {
+      console.log(`[detectAndAssignPlan] No Ticketoo tier products found, skipping`);
       return;
     }
 
-    // Step 2: Not the owner — check memberships to detect purchased tier
-    console.log(`[detectAndAssignPlan] Not a product owner, checking memberships...`);
-
-    const membershipsRes = await fetch(
-      `https://api.whop.com/api/v5/app/memberships?company_id=${whopCompanyId}&valid=true`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Accept: "application/json",
-        },
-        signal: AbortSignal.timeout(5000),
-      }
+    // Use Whop's checkAccess API (Calloo model) to see which products this user has access to.
+    // This works for both app developers (access_level: "admin") and
+    // customers who purchased a tier (access_level: "customer").
+    // Check from highest tier down so we can stop early.
+    const sortedProducts = tierProductIds.sort(
+      (a, b) => (tierHierarchy[productTierMap[b]] || 0) - (tierHierarchy[productTierMap[a]] || 0)
     );
 
-    if (!membershipsRes.ok) {
-      console.log(`[detectAndAssignPlan] Memberships API returned ${membershipsRes.status}`);
-      return;
-    }
-
-    const membershipsData = await membershipsRes.json();
-    const memberships = membershipsData.data || [];
-    console.log(`[detectAndAssignPlan] Found ${memberships.length} active memberships`);
-
-    if (memberships.length === 0) return;
-
-    // Find highest tier from membership product_ids
     let highestTier: string | null = null;
     let highestLevel = 0;
+    let isAdmin = false;
 
-    for (const membership of memberships) {
-      const productId = membership.product_id;
-      if (!productId) continue;
+    for (const productId of sortedProducts) {
+      try {
+        const accessResult = await whop.users.checkAccess(productId, { id: whopUserId });
+        const tier = productTierMap[productId];
+        console.log(`[detectAndAssignPlan] checkAccess(${productId}) → has_access=${accessResult.has_access}, level=${accessResult.access_level}, tier=${tier}`);
 
-      const tier = productTierMap[productId];
-      if (tier && (tierHierarchy[tier] || 0) > highestLevel) {
-        highestLevel = tierHierarchy[tier] || 0;
-        highestTier = tier;
+        if (accessResult.has_access) {
+          const tierLevel = tierHierarchy[tier] || 0;
+          if (tierLevel > highestLevel) {
+            highestLevel = tierLevel;
+            highestTier = tier;
+          }
+          if (accessResult.access_level === "admin") {
+            isAdmin = true;
+          }
+        }
+      } catch (accessError) {
+        console.error(`[detectAndAssignPlan] checkAccess failed for ${productId}:`, accessError);
+      }
+    }
+
+    // App developers (admin access) always get elite, even if no specific tier product matched
+    if (isAdmin && highestLevel < tierHierarchy["elite"]) {
+      highestTier = "elite";
+      highestLevel = tierHierarchy["elite"];
+      console.log(`[detectAndAssignPlan] User is admin (app developer) → forcing elite tier`);
+    }
+
+    // Fallback: also check product.company_id match (covers edge cases where
+    // checkAccess may not return admin for the developer's other companies)
+    if (!highestTier) {
+      const ownsProducts = allProducts.some(
+        (p: any) => p.company_id === whopCompanyId
+      );
+      if (ownsProducts) {
+        highestTier = "elite";
+        highestLevel = tierHierarchy["elite"];
+        console.log(`[detectAndAssignPlan] Company owns products (company_id match) → elite tier`);
       }
     }
 
     if (!highestTier || highestLevel === 0) {
-      console.log(`[detectAndAssignPlan] No Ticketoo tier product found in memberships`);
+      console.log(`[detectAndAssignPlan] No access to any Ticketoo tier products, keeping current plan`);
       return;
     }
 
-    console.log(`[detectAndAssignPlan] Highest tier from memberships: ${highestTier}`);
+    console.log(`[detectAndAssignPlan] Detected tier: ${highestTier} (admin=${isAdmin})`);
 
     const targetPlan = await ctx.runQuery(api.plans.queries.getPlanByName, {
       name: highestTier as "free" | "pro" | "elite",
@@ -959,7 +931,7 @@ export const onboardUser = action({
       // Step 4.6: Auto-detect and assign plan based on product ownership
       // This implements the "Calloo model" - subscriptions tied to products.
       // App owners get elite tier, customers get tier based on their Whop membership.
-      await detectAndAssignPlan(ctx, company._id, whopCompanyId);
+      await detectAndAssignPlan(ctx, company._id, whopCompanyId, whopUserId);
       // Re-fetch company in case plan was updated
       company = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId: company._id,

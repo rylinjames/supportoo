@@ -362,16 +362,22 @@ ${products.map((product: any) => {
   if (productPlans.length > 0) {
     productInfo += `\n  Pricing Options:`;
     for (const plan of productPlans) {
-      const price = formatPrice(plan.initialPrice, plan.currency);
-      // Always show the plan, even if FREE
-      if (price === "Free") {
+      // Use renewalPrice when initialPrice is 0 (common for subscriptions)
+      const effectivePrice = plan.initialPrice
+        ? formatPrice(plan.initialPrice, plan.currency)
+        : plan.renewalPrice
+        ? formatPrice(plan.renewalPrice, plan.currency)
+        : null;
+      const isFree = !effectivePrice || effectivePrice === "Free";
+
+      if (isFree) {
         productInfo += `\n    - ${plan.title}: Free`;
-      } else if (price) {
+      } else {
         if (plan.planType === "one_time") {
-          productInfo += `\n    - ${plan.title}: ${price} (one-time purchase)`;
+          productInfo += `\n    - ${plan.title}: ${effectivePrice} (one-time purchase)`;
         } else {
           const period = formatBillingPeriod(plan.billingPeriod);
-          productInfo += `\n    - ${plan.title}: ${price}${period}`;
+          productInfo += `\n    - ${plan.title}: ${effectivePrice}${period}`;
           if (plan.trialPeriodDays) {
             productInfo += ` (${plan.trialPeriodDays}-day free trial)`;
           }

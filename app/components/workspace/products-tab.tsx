@@ -47,10 +47,10 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     { companyId, includeHidden: true, includeInactive: true }
   );
 
-  // Query plans for all products
+  // Query plans for all products — always include hidden since pricing plans are often hidden
   const plans = useQuery(
     api.whopPlans.queries.getCompanyPlans,
-    { companyId, includeHidden: showHiddenProducts }
+    { companyId, includeHidden: true }
   );
 
   // Group plans by whopProductId for easy lookup
@@ -365,6 +365,8 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                           <span className="text-xs text-muted-foreground shrink-0">
                             {plan.initialPrice
                               ? formatPrice(plan.initialPrice, plan.currency)
+                              : plan.renewalPrice
+                              ? formatPrice(plan.renewalPrice, plan.currency)
                               : "Free"}
                             {plan.planType === "renewal" && plan.billingPeriod && (
                               <>

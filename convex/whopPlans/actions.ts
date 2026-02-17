@@ -210,7 +210,7 @@ export const syncPlans = action({
             whopPlanId: whopPlan.id,
             whopProductId,
             whopCompanyId: company.whopCompanyId,
-            title: whopPlan.title || whopPlan.name || "Untitled Plan",
+            title: whopPlan.title || whopPlan.name || (whopPlan.product?.title || "Untitled Plan"),
             description: whopPlan.description || undefined,
             // Handle prices - Whop v1 returns dollars (e.g. 29.99), store in cents (2999)
             // Frontend and AI context both expect cents and divide by 100 for display

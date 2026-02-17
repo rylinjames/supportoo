@@ -60,6 +60,28 @@ async function fetchWithRetry(
 }
 
 /**
+ * Build a descriptive plan title when internal_notes and title are both missing.
+ * Uses billing type and pricing to generate something like "Monthly Plan", "Free", etc.
+ */
+function buildPlanTitle(plan: any): string {
+  const isOneTime = plan.plan_type === "one_time";
+  const initialPrice = plan.initial_price || 0;
+  const renewalPrice = plan.renewal_price || 0;
+  const billingPeriod = plan.billing_period;
+
+  if (isOneTime) {
+    return initialPrice === 0 ? "Free" : "One-time Purchase";
+  }
+
+  // Renewal plan
+  if (renewalPrice === 0 && initialPrice === 0) return "Free";
+  if (billingPeriod === 7) return "Weekly Plan";
+  if (billingPeriod === 30 || billingPeriod === 31) return "Monthly Plan";
+  if (billingPeriod === 365 || billingPeriod === 366) return "Yearly Plan";
+  return "Subscription";
+}
+
+/**
  * Sync all plans from Whop for a company
  *
  * Plans contain the actual pricing information for products.
@@ -210,8 +232,9 @@ export const syncPlans = action({
             whopPlanId: whopPlan.id,
             whopProductId,
             whopCompanyId: company.whopCompanyId,
-            title: whopPlan.title || whopPlan.name || (whopPlan.product?.title || "Untitled Plan"),
+            title: whopPlan.internal_notes || whopPlan.title || whopPlan.name || buildPlanTitle(whopPlan),
             description: whopPlan.description || undefined,
+            internalNotes: whopPlan.internal_notes || undefined,
             // Handle prices - Whop v1 returns dollars (e.g. 29.99), store in cents (2999)
             // Frontend and AI context both expect cents and divide by 100 for display
             initialPrice: whopPlan.initial_price !== undefined && whopPlan.initial_price !== null

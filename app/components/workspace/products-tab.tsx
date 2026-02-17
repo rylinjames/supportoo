@@ -31,17 +31,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
   const [isSyncingPlans, setIsSyncingPlans] = useState(false);
   const [showHiddenProducts, setShowHiddenProducts] = useState(false);
 
-  // Query products with filter based on toggle state
-  const products = useQuery(
-    api.products.queries.getCompanyProducts,
-    {
-      companyId,
-      includeHidden: showHiddenProducts,
-      includeInactive: showHiddenProducts,
-    }
-  );
-
-  // Also query all products to get counts for hidden/inactive
+  // Always fetch all products (including hidden) so we can auto-show hidden ones with paid plans
   const allProducts = useQuery(
     api.products.queries.getCompanyProducts,
     { companyId, includeHidden: true, includeInactive: true }
@@ -62,9 +52,24 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     return acc;
   }, {} as Record<string, any[]>) || {};
 
-  // Calculate hidden product counts
+  // Check if a product has at least one paid plan
+  const hasPaidPlan = (whopProductId: string) => {
+    const productPlans = plansByProduct[whopProductId] || [];
+    return productPlans.some((p: any) =>
+      (p.initialPrice && p.initialPrice > 0) || (p.renewalPrice && p.renewalPrice > 0)
+    );
+  };
+
+  // Filter products: always show visible + hidden-with-paid-plans; toggle controls the rest
+  const products = allProducts?.filter(p => {
+    if (p.isVisible && p.isActive) return true;
+    if (hasPaidPlan(p.whopProductId)) return true; // Always show if has paid plans
+    return showHiddenProducts; // Toggle controls free-only hidden products
+  });
+
+  // Count hidden products that are ONLY shown via toggle (not auto-shown)
   const hiddenCount = allProducts
-    ? allProducts.filter(p => !p.isVisible || !p.isActive).length
+    ? allProducts.filter(p => (!p.isVisible || !p.isActive) && !hasPaidPlan(p.whopProductId)).length
     : 0;
 
   // Get last sync time from most recently synced product

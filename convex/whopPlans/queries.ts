@@ -48,10 +48,10 @@ export const getPlansForProduct = query({
       plans = plans.filter((p) => p.isVisible === true);
     }
 
-    // Sort by price (lowest first)
+    // Sort by effective price (lowest first) — use renewalPrice when initialPrice is 0
     return plans.sort((a, b) => {
-      const priceA = a.initialPrice || 0;
-      const priceB = b.initialPrice || 0;
+      const priceA = a.renewalPrice || a.initialPrice || 0;
+      const priceB = b.renewalPrice || b.initialPrice || 0;
       return priceA - priceB;
     });
   },
@@ -80,10 +80,10 @@ export const getPlansByWhopProductId = query({
       plans = plans.filter((p) => p.isVisible === true);
     }
 
-    // Sort by price (lowest first)
+    // Sort by effective price (lowest first) — use renewalPrice when initialPrice is 0
     return plans.sort((a, b) => {
-      const priceA = a.initialPrice || 0;
-      const priceB = b.initialPrice || 0;
+      const priceA = a.renewalPrice || a.initialPrice || 0;
+      const priceB = b.renewalPrice || b.initialPrice || 0;
       return priceA - priceB;
     });
   },
@@ -139,11 +139,11 @@ export const getVisiblePlansForAI = query({
       });
     }
 
-    // Sort plans within each group by price
+    // Sort plans within each group by effective price
     for (const productId in plansByProduct) {
       plansByProduct[productId].sort((a, b) => {
-        const priceA = a.initialPrice || 0;
-        const priceB = b.initialPrice || 0;
+        const priceA = a.renewalPrice || a.initialPrice || 0;
+        const priceB = b.renewalPrice || b.initialPrice || 0;
         return priceA - priceB;
       });
     }

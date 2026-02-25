@@ -20,6 +20,7 @@ import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { shouldShowProduct } from "./products-filter";
 
 interface ProductsTabProps {
   companyId: Id<"companies">;
@@ -52,24 +53,17 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     return acc;
   }, {} as Record<string, any[]>) || {};
 
-  // Check if a product has at least one paid plan
-  const hasPaidPlan = (whopProductId: string) => {
-    const productPlans = plansByProduct[whopProductId] || [];
-    return productPlans.some((p: any) =>
-      (p.initialPrice && p.initialPrice > 0) || (p.renewalPrice && p.renewalPrice > 0)
-    );
-  };
-
-  // Filter products: always show visible + hidden-with-paid-plans; toggle controls the rest
+  // Filter products: hidden/inactive entries are only shown via explicit toggle.
   const products = allProducts?.filter(p => {
-    if (p.isVisible && p.isActive) return true;
-    if (hasPaidPlan(p.whopProductId)) return true; // Always show if has paid plans
-    return showHiddenProducts; // Toggle controls free-only hidden products
+    return shouldShowProduct(
+      { isVisible: p.isVisible, isActive: p.isActive },
+      showHiddenProducts
+    );
   });
 
-  // Count hidden products that are ONLY shown via toggle (not auto-shown)
+  // Count all hidden/inactive products controlled by the toggle
   const hiddenCount = allProducts
-    ? allProducts.filter(p => (!p.isVisible || !p.isActive) && !hasPaidPlan(p.whopProductId)).length
+    ? allProducts.filter(p => !p.isVisible || !p.isActive).length
     : 0;
 
   // Get last sync time from most recently synced product

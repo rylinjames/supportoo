@@ -128,6 +128,7 @@ export const syncProducts = action({
 
       // Fetch products from Whop v1 API (v1 returns sellable products with headlines)
       let allProducts: any[] = [];
+      let hadFetchError = false;
 
       try {
         console.log(`[syncProducts] ========================================`);
@@ -181,6 +182,7 @@ export const syncProducts = action({
               };
             }
 
+            hadFetchError = true;
             break;
           }
 
@@ -247,14 +249,19 @@ export const syncProducts = action({
 
       console.log(`[syncProducts] Found ${allProducts.length} products from Whop`);
 
-      if (allProducts.length === 0) {
-        console.log(`[syncProducts] No products found for company ${company.whopCompanyId}`);
+      // Never clean up on fetch failures - avoids accidental mass deletion.
+      // But if fetch succeeded and returned zero products, cleanup should delete stale rows.
+      if (hadFetchError) {
         return {
-          success: true,
+          success: false,
           syncedCount: 0,
           deletedCount: 0,
-          errors: [],
+          errors: ["Failed to fetch products from Whop API. Skipped cleanup to avoid unsafe deletion."],
         };
+      }
+
+      if (allProducts.length === 0) {
+        console.log(`[syncProducts] No products found for company ${company.whopCompanyId}; cleaning up stale products`);
       }
 
       // Get company's excluded product IDs
@@ -280,15 +287,17 @@ export const syncProducts = action({
           continue;
         }
 
-        // Skip checkout links (they have visibility: "quick_link")
-        if (whopProduct.visibility === "quick_link") {
+        const visibility = normalizeVisibility(whopProduct.visibility);
+
+        // Skip checkout links
+        if (visibility === "quick_link") {
           skippedCheckoutLinks++;
           console.log(`[syncProducts] Skipped checkout link: ${whopProduct.id} (${whopProduct.title || whopProduct.name})`);
           continue;
         }
 
-        // Skip archived products/checkout links - these are old and shouldn't be synced
-        if (whopProduct.visibility === "archived") {
+        // Skip archived products
+        if (visibility === "archived") {
           skippedArchived++;
           console.log(`[syncProducts] Skipped archived item: ${whopProduct.id} (${whopProduct.title || whopProduct.name})`);
           continue;
@@ -345,7 +354,6 @@ export const syncProducts = action({
         deletedCount,
         errors,
       };
-
     } catch (error) {
       console.error(`[syncProducts] Sync failed:`, error);
       return {
@@ -357,6 +365,10 @@ export const syncProducts = action({
     }
   },
 });
+
+function normalizeVisibility(value: unknown): string {
+  return typeof value === "string" ? value.toLowerCase() : "visible";
+}
 
 /**
  * Sync a single product from Whop data
@@ -375,6 +387,8 @@ async function syncSingleProduct(
       `not ${whopCompanyId}. Refusing to sync to prevent cross-contamination.`
     );
   }
+
+  const visibility = normalizeVisibility(whopProduct.visibility);
 
   // Map Whop product data to our schema
   // Note: Whop API uses "headline" for description, not "description"
@@ -402,8 +416,8 @@ async function syncSingleProduct(
     billingPeriod: mapWhopBillingPeriod(whopProduct),
 
     // Status - Whop API uses "visibility" field
-    isActive: whopProduct.visibility !== "archived",
-    isVisible: whopProduct.visibility === "visible",
+    isActive: visibility !== "archived",
+    isVisible: visibility === "visible",
 
     // Additional metadata
     category: whopProduct.category || whopProduct.business_type,

@@ -672,6 +672,7 @@ export default defineSchema({
     // Plan details
     title: v.string(),
     description: v.optional(v.string()),
+    internalNotes: v.optional(v.string()),
 
     // Pricing (in cents)
     initialPrice: v.optional(v.number()), // First payment amount

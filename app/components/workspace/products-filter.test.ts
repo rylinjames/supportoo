@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldShowProduct } from "./products-filter";
+import { hasNonArchivedPlan, shouldShowProduct } from "./products-filter";
 
 describe("shouldShowProduct", () => {
   it("shows visible and active products regardless of toggle", () => {
@@ -33,3 +33,23 @@ describe("shouldShowProduct", () => {
   });
 });
 
+describe("hasNonArchivedPlan", () => {
+  it("returns false when all plans are archived", () => {
+    expect(
+      hasNonArchivedPlan([{ visibility: "archived" }, { visibility: "archived" }])
+    ).toBe(false);
+  });
+
+  it("returns true when at least one plan is not archived", () => {
+    expect(
+      hasNonArchivedPlan([{ visibility: "archived" }, { visibility: "hidden" }])
+    ).toBe(true);
+    expect(
+      hasNonArchivedPlan([{ visibility: "visible" }])
+    ).toBe(true);
+  });
+
+  it("returns true when no plans exist", () => {
+    expect(hasNonArchivedPlan([])).toBe(true);
+  });
+});

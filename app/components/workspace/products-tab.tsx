@@ -7,20 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { RefreshCw, Package, Clock, EyeOff, Loader2, Bot, AlertTriangle, Tag } from "lucide-react";
+import { RefreshCw, Package, Clock, EyeOff, Loader2, Bot } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { shouldShowProduct } from "./products-filter";
+import { hasNonArchivedPlan, shouldShowProduct } from "./products-filter";
 
 interface ProductsTabProps {
   companyId: Id<"companies">;
@@ -53,8 +46,14 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     return acc;
   }, {} as Record<string, any[]>) || {};
 
-  // Filter products: hidden/inactive entries are only shown via explicit toggle.
+  // Filter products:
+  // 1) hidden/inactive entries are controlled by the toggle
+  // 2) products with only archived plans are always hidden
   const products = allProducts?.filter(p => {
+    const productPlans = plansByProduct[p.whopProductId] || [];
+    if (!hasNonArchivedPlan(productPlans)) {
+      return false;
+    }
     return shouldShowProduct(
       { isVisible: p.isVisible, isActive: p.isActive },
       showHiddenProducts
@@ -77,14 +76,6 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
 
   // Mutations
   const toggleAIInclusion = useMutation(api.products.mutations.toggleProductAIInclusion);
-  const assignPlanTier = useMutation(api.whopPlans.mutations.assignPlanTier);
-
-  // Check tier coverage - which tiers have active plans assigned
-  const tierCoverage = {
-    pro: plans?.some((p: any) => p.planTier === "pro" && p.isVisible) || false,
-    elite: plans?.some((p: any) => p.planTier === "elite" && p.isVisible) || false,
-  };
-  const hasUnassignedTiers = !tierCoverage.pro || !tierCoverage.elite;
 
   const handleToggleAI = async (productId: Id<"products">, currentValue: boolean) => {
     try {
@@ -93,19 +84,6 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     } catch (error) {
       console.error("Failed to toggle AI inclusion:", error);
       toast.error("Failed to update product");
-    }
-  };
-
-  const handleAssignTier = async (whopPlanId: Id<"whopPlans">, tier: string | null) => {
-    try {
-      await assignPlanTier({
-        whopPlanId,
-        planTier: tier === "none" ? undefined : (tier as "pro" | "elite"),
-      });
-      toast.success(tier === "none" ? "Tier removed" : `Assigned to ${tier} tier`);
-    } catch (error) {
-      console.error("Failed to assign tier:", error);
-      toast.error("Failed to assign tier");
     }
   };
 
@@ -217,44 +195,6 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
         </Button>
       </div>
 
-      {/* Tier Coverage Warning */}
-      {hasUnassignedTiers && plans && plans.length > 0 && (
-        <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-yellow-800 dark:text-yellow-200">
-                Subscription Tiers Not Configured
-              </p>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                Users cannot upgrade until you assign Whop plans to subscription tiers.
-                {!tierCoverage.pro && !tierCoverage.elite && " Both Pro and Elite tiers need a plan."}
-                {!tierCoverage.pro && tierCoverage.elite && " The Pro tier needs a plan assigned."}
-                {tierCoverage.pro && !tierCoverage.elite && " The Elite tier needs a plan assigned."}
-              </p>
-              <div className="flex gap-2 mt-2">
-                <Badge variant={tierCoverage.pro ? "default" : "outline"} className={cn(
-                  "text-xs",
-                  tierCoverage.pro
-                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                    : "border-yellow-400 text-yellow-700 dark:text-yellow-300"
-                )}>
-                  Pro: {tierCoverage.pro ? "✓ Configured" : "⚠ Needs Plan"}
-                </Badge>
-                <Badge variant={tierCoverage.elite ? "default" : "outline"} className={cn(
-                  "text-xs",
-                  tierCoverage.elite
-                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                    : "border-yellow-400 text-yellow-700 dark:text-yellow-300"
-                )}>
-                  Elite: {tierCoverage.elite ? "✓ Configured" : "⚠ Needs Plan"}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Header with filters */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -322,7 +262,9 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
         /* Products Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {products.map((product: any) => {
-            const productPlans = plansByProduct[product.whopProductId] || [];
+            const productPlans = (plansByProduct[product.whopProductId] || []).filter(
+              (plan: any) => (plan.visibility || "").toLowerCase() !== "archived"
+            );
             // Default to true if includeInAI is not set
             const isIncludedInAI = product.includeInAI !== false;
 
@@ -349,7 +291,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                   </Badge>
                 </div>
 
-                {/* Pricing & Tier Assignment */}
+                {/* Pricing */}
                 {productPlans.length > 0 && (
                   <div className="space-y-2 mb-3">
                     {productPlans.map((plan: any) => (
@@ -379,22 +321,6 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                               </>
                             )}
                           </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Tag className="h-3 w-3 text-muted-foreground" />
-                          <Select
-                            value={plan.planTier || "none"}
-                            onValueChange={(value) => handleAssignTier(plan._id, value)}
-                          >
-                            <SelectTrigger className="h-7 w-24 text-xs">
-                              <SelectValue placeholder="Tier" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">None</SelectItem>
-                              <SelectItem value="pro">Pro</SelectItem>
-                              <SelectItem value="elite">Elite</SelectItem>
-                            </SelectContent>
-                          </Select>
                         </div>
                       </div>
                     ))}

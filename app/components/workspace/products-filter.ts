@@ -3,6 +3,10 @@ export type ProductVisibilityInput = {
   isActive: boolean;
 };
 
+export type PlanVisibilityInput = {
+  visibility?: string;
+};
+
 export function shouldShowProduct(
   product: ProductVisibilityInput,
   showHiddenProducts: boolean
@@ -11,3 +15,7 @@ export function shouldShowProduct(
   return showHiddenProducts;
 }
 
+export function hasNonArchivedPlan(plans: PlanVisibilityInput[]): boolean {
+  if (plans.length === 0) return true;
+  return plans.some((plan) => (plan.visibility || "").toLowerCase() !== "archived");
+}

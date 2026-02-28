@@ -138,6 +138,60 @@ export const deleteStalePlans = mutation({
 });
 
 /**
+ * Remove plans that no longer belong to the current product catalog.
+ *
+ * This is a defensive cleanup step while pricing sync is being redesigned.
+ * It removes archived plans and any plan whose product no longer exists in the
+ * synced product catalog for the company.
+ */
+export const cleanupPlansForProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+    activeWhopProductIds: v.array(v.string()),
+  },
+  handler: async (ctx, { companyId, activeWhopProductIds }) => {
+    const activeIds = new Set(activeWhopProductIds);
+    const allPlans = await ctx.db
+      .query("whopPlans")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    const plansToDelete = allPlans.filter(
+      (plan) =>
+        plan.visibility === "archived" ||
+        !activeIds.has(plan.whopProductId)
+    );
+
+    for (const plan of plansToDelete) {
+      await ctx.db.delete(plan._id);
+    }
+
+    return {
+      deletedCount: plansToDelete.length,
+      keptCount: allPlans.length - plansToDelete.length,
+    };
+  },
+});
+
+export const deleteAllCompanyPlans = mutation({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    const plans = await ctx.db
+      .query("whopPlans")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    for (const plan of plans) {
+      await ctx.db.delete(plan._id);
+    }
+
+    return plans.length;
+  },
+});
+
+/**
  * Link a plan to a product (after product sync)
  */
 export const linkPlanToProduct = mutation({

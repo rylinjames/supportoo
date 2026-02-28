@@ -1,82 +1,337 @@
 /**
  * Products Actions
  *
- * Actions for syncing products from Whop API
+ * Actions for syncing products from Whop API.
+ *
+ * The old sync path relied on `sdk.products.list`, which omits `company_id`
+ * and allowed ambiguous products to be assigned to the requested company.
+ * This file now prefers access-pass based sources and validates legacy results
+ * against the public access-pass detail endpoint before writing anything.
  */
 
 "use node";
 
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
-import { api, internal } from "../_generated/api";
+import { api } from "../_generated/api";
 import { getWhopConfig } from "../lib/whop";
+import { WhopServerSdk } from "@whop/api";
 import Whop from "@whop/sdk";
 
-/**
- * Fetch with retry and exponential backoff
- *
- * Retries on server errors (5xx) and network failures.
- * Does NOT retry on client errors (4xx) as those are permanent failures.
- */
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-  maxRetries: number = 3,
-  baseDelayMs: number = 1000
-): Promise<Response> {
-  let lastError: Error | null = null;
+type SyncSource =
+  | "access_passes_on_behalf_of"
+  | "access_passes_app"
+  | "legacy_products_public_verified"
+  | "none";
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+type NormalizedProduct = {
+  id: string;
+  companyId: string;
+  title: string;
+  description: string;
+  visibility: string;
+  businessType?: string;
+  category?: string;
+  tags?: string[];
+  imageUrl?: string;
+  rawWhopData: any;
+};
+
+type ProductFetchResult = {
+  source: SyncSource;
+  products: NormalizedProduct[];
+  errors: string[];
+  hadSuccessfulSource: boolean;
+};
+
+function getBaseWhopServerSdk() {
+  const { apiKey, appId } = getWhopConfig();
+  return WhopServerSdk({ appApiKey: apiKey, appId });
+}
+
+function getOnBehalfOfSdk(whopUserId?: string) {
+  const base = getBaseWhopServerSdk();
+  return whopUserId ? base.withUser(whopUserId) : base;
+}
+
+function pickDescription(...parts: Array<string | null | undefined>) {
+  const cleaned = parts
+    .map((part) => (part || "").trim())
+    .filter((part) => part.length > 0);
+
+  const deduped: string[] = [];
+  for (const part of cleaned) {
+    if (!deduped.includes(part)) {
+      deduped.push(part);
+    }
+  }
+
+  return deduped.join("\n\n");
+}
+
+function isNotFoundError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("not found") || message.includes("404");
+}
+
+function normalizeAccessPass(accessPass: any, companyId: string): NormalizedProduct {
+  return {
+    id: accessPass.id,
+    companyId,
+    title: accessPass.title || accessPass.name || "Untitled Product",
+    description: pickDescription(
+      accessPass.shortenedDescription,
+      accessPass.headline,
+      accessPass.creatorPitch,
+      accessPass.description
+    ),
+    visibility: accessPass.visibility || "hidden",
+    businessType: accessPass.type || accessPass.businessType,
+    category: accessPass.category,
+    tags: accessPass.tags || [],
+    imageUrl:
+      accessPass.logo?.sourceUrl ||
+      accessPass.bannerImage?.source?.url ||
+      accessPass.bannerImage?.sourceUrl ||
+      undefined,
+    rawWhopData: accessPass,
+  };
+}
+
+async function listAccessPasses(
+  sdk: ReturnType<typeof WhopServerSdk>,
+  companyId: string
+): Promise<NormalizedProduct[]> {
+  const products: NormalizedProduct[] = [];
+  let after: string | undefined;
+
+  while (products.length < 500) {
+    const response: any = await sdk.companies.listAccessPasses({
+      companyId,
+      first: 100,
+      ...(after ? { after } : {}),
+    } as any);
+
+    const nodes = response?.accessPasses?.nodes || [];
+    for (const node of nodes) {
+      products.push(normalizeAccessPass(node, companyId));
+      if (products.length >= 500) break;
+    }
+
+    const pageInfo = response?.accessPasses?.pageInfo;
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || nodes.length === 0) {
+      break;
+    }
+    after = pageInfo.endCursor;
+  }
+
+  return products;
+}
+
+async function listLegacyProducts(companyId: string) {
+  const { apiKey, appId } = getWhopConfig();
+  const sdk = new Whop({ apiKey, appID: appId });
+  const products: any[] = [];
+
+  for await (const product of sdk.products.list({
+    company_id: companyId,
+    product_types: ["regular"],
+  })) {
+    products.push(product);
+    if (products.length >= 500) break;
+  }
+
+  return products;
+}
+
+async function verifyLegacyProduct(
+  publicSdk: ReturnType<typeof WhopServerSdk>,
+  companyId: string,
+  legacyProduct: any
+): Promise<NormalizedProduct | null> {
+  try {
+    const accessPass: any = await publicSdk.accessPasses.getAccessPass({
+      accessPassId: legacyProduct.id,
+    });
+
+    if (accessPass?.company?.id !== companyId) {
+      return null;
+    }
+
+    return {
+      id: legacyProduct.id,
+      companyId,
+      title: accessPass.title || legacyProduct.title || legacyProduct.name || "Untitled Product",
+      description: pickDescription(
+        accessPass.shortenedDescription,
+        accessPass.headline,
+        legacyProduct.headline,
+        legacyProduct.description
+      ),
+      visibility: accessPass.visibility || legacyProduct.visibility || "hidden",
+      businessType: legacyProduct.business_type || legacyProduct.type,
+      category: legacyProduct.category,
+      tags: legacyProduct.tags || [],
+      imageUrl:
+        accessPass.logo?.sourceUrl ||
+        legacyProduct.image_url ||
+        legacyProduct.image ||
+        legacyProduct.thumbnail ||
+        undefined,
+      rawWhopData: {
+        ...legacyProduct,
+        publicAccessPass: accessPass,
+      },
+    };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function fetchProductsForSync(
+  companyId: string,
+  whopUserId?: string
+): Promise<ProductFetchResult> {
+  const errors: string[] = [];
+
+  if (whopUserId) {
     try {
-      const response = await fetch(url, options);
-
-      // Don't retry on client errors (4xx) - those are permanent
-      if (response.status >= 400 && response.status < 500) {
-        return response;
-      }
-
-      // Retry on server errors (5xx)
-      if (response.status >= 500) {
-        const errorText = await response.text();
-        throw new Error(`Server error ${response.status}: ${errorText}`);
-      }
-
-      return response;
+      const products = await listAccessPasses(getOnBehalfOfSdk(whopUserId), companyId);
+      return {
+        source: "access_passes_on_behalf_of",
+        products,
+        errors,
+        hadSuccessfulSource: true,
+      };
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      errors.push(`On-behalf-of access pass sync failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
-      if (attempt < maxRetries - 1) {
-        // Exponential backoff: 1s, 3s, 9s
-        const delay = baseDelayMs * Math.pow(3, attempt);
-        console.log(
-          `[fetchWithRetry] Attempt ${attempt + 1}/${maxRetries} failed: ${lastError.message}. Retrying in ${delay}ms...`
+  try {
+    const products = await listAccessPasses(getBaseWhopServerSdk(), companyId);
+    return {
+      source: "access_passes_app",
+      products,
+      errors,
+      hadSuccessfulSource: true,
+    };
+  } catch (error) {
+    errors.push(`App-key access pass sync failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  try {
+    const publicSdk = getBaseWhopServerSdk();
+    const legacyProducts = await listLegacyProducts(companyId);
+    const verifiedProducts: NormalizedProduct[] = [];
+
+    for (const legacyProduct of legacyProducts) {
+      try {
+        const verified = await verifyLegacyProduct(publicSdk, companyId, legacyProduct);
+        if (verified) {
+          verifiedProducts.push(verified);
+        }
+      } catch (error) {
+        errors.push(
+          `Failed to validate legacy product ${legacyProduct.id}: ${error instanceof Error ? error.message : String(error)}`
         );
-        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    if (verifiedProducts.length > 0) {
+      return {
+        source: "legacy_products_public_verified",
+        products: verifiedProducts,
+        errors,
+        hadSuccessfulSource: true,
+      };
+    }
+
+    errors.push("Legacy product sync returned no company-verified products.");
+  } catch (error) {
+    errors.push(`Legacy product sync failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  return {
+    source: "none",
+    products: [],
+    errors,
+    hadSuccessfulSource: false,
+  };
+}
+
+async function sanitizeStoredCatalog(
+  ctx: any,
+  companyId: string,
+  whopCompanyId: string
+): Promise<{ deletedProducts: number; deletedPlans: number }> {
+  const existingProducts = await ctx.runQuery(api.products.queries.getCompanyProducts, {
+    companyId,
+    includeHidden: true,
+    includeInactive: true,
+  });
+
+  if (existingProducts.length === 0) {
+    return { deletedProducts: 0, deletedPlans: 0 };
+  }
+
+  const publicSdk = getBaseWhopServerSdk();
+  const verifiedProductIds: string[] = [];
+
+  for (const product of existingProducts) {
+    try {
+      const accessPass: any = await publicSdk.accessPasses.getAccessPass({
+        accessPassId: product.whopProductId,
+      });
+
+      if (accessPass?.company?.id === whopCompanyId) {
+        verifiedProductIds.push(product.whopProductId);
+      }
+    } catch (error) {
+      if (!isNotFoundError(error)) {
+        // Keep unknown rows on transient failures. We only want to delete rows we can prove are wrong.
+        verifiedProductIds.push(product.whopProductId);
       }
     }
   }
 
-  console.error(`[fetchWithRetry] All ${maxRetries} attempts failed`);
-  throw lastError || new Error("Max retries exceeded");
+  const deletedProducts = await ctx.runMutation(api.products.mutations.cleanupDeletedProducts, {
+    companyId,
+    syncedProductIds: verifiedProductIds,
+  });
+
+  const planCleanup = await ctx.runMutation(api.whopPlans.mutations.cleanupPlansForProducts, {
+    companyId,
+    activeWhopProductIds: verifiedProductIds,
+  });
+
+  return {
+    deletedProducts,
+    deletedPlans: planCleanup.deletedCount,
+  };
 }
 
 /**
- * Sync all products from Whop for a company
+ * Sync all products from Whop for a company.
  *
- * IMPORTANT: The userToken parameter should be passed when syncing products
- * for companies OTHER than the app owner's company. The App API key only
- * has direct access to products owned by the app owner.
+ * `whopUserId` is the preferred auth input. It lets the Whop server SDK query
+ * company access passes on behalf of the currently authenticated user.
  */
 export const syncProducts = action({
   args: {
     companyId: v.id("companies"),
-    userToken: v.optional(v.string()), // User's JWT token for API calls on their behalf
+    userToken: v.optional(v.string()),
+    whopUserId: v.optional(v.string()),
   },
-  handler: async (ctx, { companyId, userToken }): Promise<any> => {
-    console.log(`[syncProducts] Starting sync for company: ${companyId}, hasUserToken: ${!!userToken}`);
-    
+  handler: async (ctx, { companyId, userToken, whopUserId }): Promise<any> => {
+    console.log(
+      `[syncProducts] Starting sync for company: ${companyId}, hasUserToken: ${!!userToken}, hasWhopUserId: ${!!whopUserId}`
+    );
+
     try {
-      // Get company data to find Whop company ID
       const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId,
       });
@@ -89,206 +344,55 @@ export const syncProducts = action({
         throw new Error("No Whop company ID found for this company");
       }
 
-      // CRITICAL: Verify this company's whopCompanyId is unique before syncing
-      // This prevents cross-contamination if duplicate whopCompanyIds exist
       const uniquenessCheck = await ctx.runQuery(
         api.companies.queries.verifyWhopCompanyIdUnique,
         { companyId }
       );
 
       if (!uniquenessCheck.valid) {
-        console.error(`[syncProducts] ❌ DUPLICATE whopCompanyId DETECTED!`);
-        console.error(`[syncProducts] ${uniquenessCheck.error}`);
         return {
           success: false,
           syncedCount: 0,
           deletedCount: 0,
           errors: [
-            `Data integrity error: ${uniquenessCheck.error}. ` +
-            `Please resolve duplicate whopCompanyIds before syncing. ` +
-            `Use findDuplicateWhopCompanyIds query to identify and clean up duplicates.`
+            `Data integrity error: ${uniquenessCheck.error}. Resolve duplicate whopCompanyIds before syncing.`,
           ],
         };
       }
 
-      console.log(`[syncProducts] ✅ whopCompanyId uniqueness verified`);
-      console.log(`[syncProducts] Fetching products for Whop company: ${company.whopCompanyId}`);
+      const sanitation = await sanitizeStoredCatalog(ctx, companyId, company.whopCompanyId);
+      console.log(`[syncProducts] Sanitized existing catalog`, sanitation);
 
-      // Mark all existing products as outdated before sync
-      const outdatedCount = await ctx.runMutation(
-        api.products.mutations.markProductsAsOutdated,
-        { companyId }
-      );
-      console.log(`[syncProducts] Marked ${outdatedCount} existing products as outdated`);
+      await ctx.runMutation(api.products.mutations.markProductsAsOutdated, { companyId });
 
-      // Fetch products from Whop API
-      let allProducts: any[] = [];
+      const fetchResult = await fetchProductsForSync(company.whopCompanyId, whopUserId);
+      console.log(`[syncProducts] Product source: ${fetchResult.source}, fetched: ${fetchResult.products.length}`);
 
-      try {
-        console.log(`[syncProducts] ========================================`);
-        console.log(`[syncProducts] 🔄 PRODUCT SYNC STARTED`);
-        console.log(`[syncProducts] ----------------------------------------`);
-        console.log(`[syncProducts] Company Name: ${company.name}`);
-        console.log(`[syncProducts] Company ID (Convex): ${companyId}`);
-        console.log(`[syncProducts] Company ID (Whop): ${company.whopCompanyId}`);
-        console.log(`[syncProducts] Has User Token: ${!!userToken}`);
-        console.log(`[syncProducts] ----------------------------------------`);
-
-        // Use Whop SDK with product_types: ['regular'] filter to exclude checkout links
-        // Requires access_pass:basic:read permission in Whop developer dashboard
-        const { apiKey, appId } = getWhopConfig();
-        console.log(`[syncProducts] Using Whop SDK with product_types: ['regular'] filter`);
-
-        // Initialize SDK with both apiKey and appID (required for products.list)
-        const sdk = new Whop({ apiKey, appID: appId });
-
-        let count = 0;
-        for await (const product of sdk.products.list({
-          company_id: company.whopCompanyId,
-          product_types: ['regular']  // Filters out checkout links
-        })) {
-          allProducts.push(product);
-          count++;
-
-          if (count % 10 === 0) {
-            console.log(`[syncProducts] Fetched ${count} products so far...`);
-          }
-
-          // Safety limit
-          if (count >= 500) {
-            console.log(`[syncProducts] Reached product limit of 500`);
-            break;
-          }
-        }
-
-        console.log(`[syncProducts] ----------------------------------------`);
-        console.log(`[syncProducts] Total products fetched: ${allProducts.length}`);
-
-        // Filter and validate products for multi-tenancy
-        if (allProducts.length > 0) {
-          // Get company_id from product, checking multiple possible field names
-          const getCompanyId = (p: any) => p.company_id || p.companyId || p.company || null;
-
-          // Separate products with and without company_id
-          const productsWithCompanyId = allProducts.filter((p: any) => getCompanyId(p));
-          const productsWithoutCompanyId = allProducts.filter((p: any) => !getCompanyId(p));
-
-          console.log(`[syncProducts] Products with company_id: ${productsWithCompanyId.length}`);
-          console.log(`[syncProducts] Products WITHOUT company_id: ${productsWithoutCompanyId.length}`);
-
-          if (productsWithoutCompanyId.length > 0) {
-            console.log(`[syncProducts] ⚠️ WARNING: Skipping ${productsWithoutCompanyId.length} products missing company_id:`);
-            productsWithoutCompanyId.slice(0, 5).forEach((p: any) => {
-              console.log(`[syncProducts]   - "${p.title || p.name}" (id: ${p.id})`);
-            });
-          }
-
-          // Check company IDs of products that have them
-          const companyIds = [...new Set(productsWithCompanyId.map((p: any) => getCompanyId(p)))];
-          console.log(`[syncProducts] 🏢 Product Company IDs: ${companyIds.join(', ')}`);
-          console.log(`[syncProducts] Expected Company ID: ${company.whopCompanyId}`);
-
-          // Check for products from wrong companies (not just missing)
-          const wrongCompanyProducts = productsWithCompanyId.filter(
-            (p: any) => getCompanyId(p) !== company.whopCompanyId
-          );
-
-          if (wrongCompanyProducts.length > 0) {
-            console.log(`[syncProducts] ❌ Found ${wrongCompanyProducts.length} products from WRONG company!`);
-            wrongCompanyProducts.slice(0, 3).forEach((p: any) => {
-              console.log(`[syncProducts]   - "${p.title}" belongs to ${getCompanyId(p)}`);
-            });
-
-            // Only abort if products belong to a DIFFERENT company (not just missing)
-            return {
-              success: false,
-              syncedCount: 0,
-              deletedCount: 0,
-              errors: [
-                `Multi-tenancy violation: API returned products from ${companyIds.join(', ')} but expected ${company.whopCompanyId}. ` +
-                `This could be a security issue. Please contact support.`
-              ],
-            };
-          }
-
-          // Filter allProducts to only include valid ones (with correct company_id)
-          // Products without company_id will be assigned the expected company_id during sync
-          allProducts = allProducts.filter((p: any) => {
-            const cid = getCompanyId(p);
-            // Keep if company_id matches OR if company_id is missing (we'll assign it)
-            return !cid || cid === company.whopCompanyId;
-          });
-
-          console.log(`[syncProducts] ✅ ${allProducts.length} products passed validation`);
-
-          // Log first 3 products for debugging
-          console.log(`[syncProducts] Sample products:`);
-          allProducts.slice(0, 3).forEach((p: any, i: number) => {
-            console.log(`[syncProducts]   ${i + 1}. "${p.title || p.name}" (company: ${getCompanyId(p) || 'will be assigned'})`);
-          });
-        }
-        console.log(`[syncProducts] ========================================`);
-        
-      } catch (error) {
-        console.error(`[syncProducts] Error fetching products:`, error);
-        
-        // Don't throw on empty response - this is expected if no products exist
-        if (error instanceof Error && 
-            (error.message.includes('404') || 
-             error.message.includes('not found') ||
-             error.message.includes('no products'))) {
-          console.log(`[syncProducts] No products found`);
-        } else {
-          throw error; // Re-throw other errors
-        }
-      }
-
-      console.log(`[syncProducts] Found ${allProducts.length} products from Whop`);
-
-      if (allProducts.length === 0) {
-        console.log(`[syncProducts] No products found for company ${company.whopCompanyId}`);
+      if (!fetchResult.hadSuccessfulSource) {
         return {
-          success: true,
+          success: false,
           syncedCount: 0,
-          deletedCount: 0,
-          errors: [],
+          deletedCount: sanitation.deletedProducts,
+          errors: fetchResult.errors,
         };
       }
 
-      // Get company's excluded product IDs
       const excludedProductIds = company.excludedProductIds || [];
-      if (excludedProductIds.length > 0) {
-        console.log(`[syncProducts] Company has ${excludedProductIds.length} excluded products`);
-      }
-
-      // Process each product
       const syncedProductIds: string[] = [];
-      const errors: string[] = [];
-      let skippedCheckoutLinks = 0;
+      const errors = [...fetchResult.errors];
       let skippedArchived = 0;
       let skippedExcluded = 0;
 
-      for (const whopProduct of allProducts) {
-        if (!whopProduct) continue; // Skip null entries
+      for (const whopProduct of fetchResult.products) {
+        if (!whopProduct) continue;
 
-        // Skip products that are in the exclusion list
         if (excludedProductIds.includes(whopProduct.id)) {
           skippedExcluded++;
-          console.log(`[syncProducts] Skipped excluded product: ${whopProduct.id} (${whopProduct.title || whopProduct.name})`);
           continue;
         }
 
-        // Skip checkout links (they have visibility: "quick_link")
-        if (whopProduct.visibility === "quick_link") {
-          skippedCheckoutLinks++;
-          console.log(`[syncProducts] Skipped checkout link: ${whopProduct.id} (${whopProduct.title || whopProduct.name})`);
-          continue;
-        }
-
-        // Skip archived products/checkout links - these are old and shouldn't be synced
-        if (whopProduct.visibility === "archived") {
+        if (whopProduct.visibility === "archived" || whopProduct.visibility === "quick_link") {
           skippedArchived++;
-          console.log(`[syncProducts] Skipped archived item: ${whopProduct.id} (${whopProduct.title || whopProduct.name})`);
           continue;
         }
 
@@ -297,53 +401,50 @@ export const syncProducts = action({
           syncedProductIds.push(whopProduct.id);
           console.log(`[syncProducts] Synced product: ${whopProduct.id} -> ${productId}`);
         } catch (error) {
-          const errorMsg = `Failed to sync product ${whopProduct?.id || 'unknown'}: ${error instanceof Error ? error.message : String(error)}`;
+          const errorMsg = `Failed to sync product ${whopProduct.id}: ${error instanceof Error ? error.message : String(error)}`;
           errors.push(errorMsg);
           console.error(`[syncProducts] ${errorMsg}`);
         }
       }
 
-      if (skippedCheckoutLinks > 0) {
-        console.log(`[syncProducts] Skipped ${skippedCheckoutLinks} checkout links`);
-      }
-      if (skippedArchived > 0) {
-        console.log(`[syncProducts] Skipped ${skippedArchived} archived items`);
-      }
-      if (skippedExcluded > 0) {
-        console.log(`[syncProducts] Skipped ${skippedExcluded} excluded products`);
-      }
+      const deletedProducts = await ctx.runMutation(api.products.mutations.cleanupDeletedProducts, {
+        companyId,
+        syncedProductIds,
+      });
 
-      // Clean up products that no longer exist in Whop
-      const deletedCount: number = await ctx.runMutation(
-        api.products.mutations.cleanupDeletedProducts,
-        { companyId, syncedProductIds }
-      );
+      const deletedPlans = await ctx.runMutation(api.whopPlans.mutations.cleanupPlansForProducts, {
+        companyId,
+        activeWhopProductIds: syncedProductIds,
+      });
 
-      console.log(`[syncProducts] Sync complete. Synced: ${syncedProductIds.length}, Deleted: ${deletedCount}, Errors: ${errors.length}`);
-
-      // After syncing products, also sync plans to get accurate pricing
-      // Plans contain the actual pricing info (products API doesn't return prices)
-      console.log(`[syncProducts] Now syncing plans for pricing data...`);
+      let syncedPlans = 0;
+      let totalDeletedPlans = sanitation.deletedPlans + deletedPlans.deletedCount;
       try {
-        const plansSyncResult = await ctx.runAction(
-          api.whopPlans.actions.syncPlans,
-          { companyId }
-        );
-        console.log(
-          `[syncProducts] Plans sync complete: ${plansSyncResult.syncedCount} plans synced`
-        );
-      } catch (plansError) {
-        console.error(`[syncProducts] Plans sync failed:`, plansError);
-        errors.push(`Plans sync failed: ${plansError instanceof Error ? plansError.message : String(plansError)}`);
+        const plansSyncResult = await ctx.runAction(api.whopPlans.actions.syncPlans, {
+          companyId,
+          whopUserId,
+        });
+
+        syncedPlans = plansSyncResult.syncedCount;
+        totalDeletedPlans += plansSyncResult.deletedCount;
+        if (plansSyncResult.errors.length > 0) {
+          errors.push(...plansSyncResult.errors);
+        }
+      } catch (error) {
+        errors.push(`Plans sync failed: ${error instanceof Error ? error.message : String(error)}`);
       }
 
       return {
-        success: true,
+        success: errors.length === 0,
         syncedCount: syncedProductIds.length,
-        deletedCount,
+        deletedCount: sanitation.deletedProducts + deletedProducts,
+        deletedPlans: totalDeletedPlans,
+        syncedPlans,
+        skippedArchived,
+        skippedExcluded,
+        source: fetchResult.source,
         errors,
       };
-
     } catch (error) {
       console.error(`[syncProducts] Sync failed:`, error);
       return {
@@ -356,275 +457,186 @@ export const syncProducts = action({
   },
 });
 
-/**
- * Sync a single product from Whop data
- */
 async function syncSingleProduct(
   ctx: any,
   companyId: string,
   whopCompanyId: string,
-  whopProduct: any
+  whopProduct: NormalizedProduct
 ) {
-  // Get company_id from product, checking multiple possible field names
-  const productCompanyId = whopProduct.company_id || whopProduct.companyId || whopProduct.company;
-
-  // If product has a company_id, it MUST match the expected company
-  if (productCompanyId && productCompanyId !== whopCompanyId) {
+  if (whopProduct.companyId !== whopCompanyId) {
     throw new Error(
-      `Product ${whopProduct.id} belongs to company ${productCompanyId}, ` +
-      `not ${whopCompanyId}. Refusing to sync to prevent cross-contamination.`
+      `Product ${whopProduct.id} belongs to company ${whopProduct.companyId}, not ${whopCompanyId}.`
     );
   }
 
-  // If product is missing company_id, we'll assign the expected one
-  // (This can happen with some Whop SDK responses)
-  const resolvedCompanyId = productCompanyId || whopCompanyId;
-
-  // Map Whop product data to our schema
-  // Note: Whop API uses "headline" for description, not "description"
-  const description = whopProduct.headline || whopProduct.description || "";
+  const description = whopProduct.description || "";
 
   const productData = {
     companyId,
     whopProductId: whopProduct.id,
-    whopCompanyId: resolvedCompanyId, // Use resolved company_id (from product or assigned)
-    title: whopProduct.title || whopProduct.name || "Untitled Product",
+    whopCompanyId,
+    title: whopProduct.title,
     description,
-
-    // Price handling - Note: Whop Products API doesn't return pricing
-    // Pricing comes from the Plans API which should be synced separately
-    price: whopProduct.price ? Math.round(whopProduct.price) : undefined,
-    currency: whopProduct.currency || "USD",
-
-    // Map product type from Whop categories
-    productType: mapWhopProductType(whopProduct.business_type || whopProduct.category || whopProduct.type),
-
-    // Map access type from Whop subscription info
-    accessType: mapWhopAccessType(whopProduct),
-
-    // Map billing period if it's a subscription
-    billingPeriod: mapWhopBillingPeriod(whopProduct),
-
-    // Status - Whop API uses "visibility" field
+    price: undefined,
+    currency: "USD",
+    productType: mapWhopProductType(whopProduct.businessType || whopProduct.category),
+    accessType: mapWhopAccessType(whopProduct.rawWhopData),
+    billingPeriod: mapWhopBillingPeriod(whopProduct.rawWhopData),
     isActive: whopProduct.visibility !== "archived",
     isVisible: whopProduct.visibility === "visible",
-
-    // Additional metadata
-    category: whopProduct.category || whopProduct.business_type,
+    category: whopProduct.category || whopProduct.businessType,
     tags: whopProduct.tags || [],
-    imageUrl: whopProduct.image_url || whopProduct.image || whopProduct.thumbnail,
-
-    // Extract features and benefits from description or dedicated fields
-    features: whopProduct.features || extractFeaturesFromText(description),
-    benefits: whopProduct.benefits || extractBenefitsFromText(description),
-    targetAudience: whopProduct.target_audience || whopProduct.audience,
-
-    // Store raw data for debugging
-    rawWhopData: whopProduct,
+    imageUrl: whopProduct.imageUrl,
+    features: extractFeaturesFromText(description),
+    benefits: extractBenefitsFromText(description),
+    targetAudience: whopProduct.rawWhopData?.targetAudience || whopProduct.rawWhopData?.audience,
+    rawWhopData: whopProduct.rawWhopData,
   };
 
-  // Create or update the product
-  const productId = await ctx.runMutation(
-    api.products.mutations.upsertProduct,
-    productData
-  );
-
-  return productId;
+  return await ctx.runMutation(api.products.mutations.upsertProduct, productData);
 }
 
-/**
- * Map Whop product category/type to our product type enum
- */
-function mapWhopProductType(whopType: string | undefined): "membership" | "digital_product" | "course" | "community" | "software" | "other" {
+function mapWhopProductType(
+  whopType: string | undefined
+): "membership" | "digital_product" | "course" | "community" | "software" | "other" {
   if (!whopType) return "other";
-  
+
   const type = whopType.toLowerCase();
-  
-  if (type.includes("membership") || type.includes("subscription")) {
-    return "membership";
-  }
-  if (type.includes("course") || type.includes("training") || type.includes("education")) {
-    return "course";
-  }
-  if (type.includes("community") || type.includes("discord") || type.includes("telegram")) {
-    return "community";
-  }
-  if (type.includes("software") || type.includes("app") || type.includes("tool")) {
-    return "software";
-  }
+
+  if (type.includes("membership") || type.includes("subscription")) return "membership";
+  if (type.includes("course") || type.includes("training") || type.includes("education")) return "course";
+  if (type.includes("community") || type.includes("discord") || type.includes("telegram")) return "community";
+  if (type.includes("software") || type.includes("app") || type.includes("tool")) return "software";
   if (type.includes("digital") || type.includes("download") || type.includes("ebook") || type.includes("template")) {
     return "digital_product";
   }
-  
+
   return "other";
 }
 
-/**
- * Map Whop access type from product data
- */
 function mapWhopAccessType(whopProduct: any): "one_time" | "subscription" | "lifetime" {
-  // Check for subscription indicators
-  if (whopProduct.recurring || 
-      whopProduct.subscription ||
-      whopProduct.billing_period ||
-      whopProduct.interval) {
+  if (
+    whopProduct?.recurring ||
+    whopProduct?.subscription ||
+    whopProduct?.billing_period ||
+    whopProduct?.interval
+  ) {
     return "subscription";
   }
-  
-  // Check for lifetime indicators
-  if (whopProduct.lifetime || 
-      whopProduct.permanent ||
-      (whopProduct.access_type && whopProduct.access_type.toLowerCase().includes("lifetime"))) {
+
+  if (
+    whopProduct?.lifetime ||
+    whopProduct?.permanent ||
+    (whopProduct?.access_type && String(whopProduct.access_type).toLowerCase().includes("lifetime"))
+  ) {
     return "lifetime";
   }
-  
+
   return "one_time";
 }
 
-/**
- * Map Whop billing period to our enum
- */
-function mapWhopBillingPeriod(whopProduct: any): "monthly" | "yearly" | "weekly" | "daily" | undefined {
-  const period = whopProduct.billing_period || whopProduct.interval || whopProduct.frequency;
-  
+function mapWhopBillingPeriod(
+  whopProduct: any
+): "monthly" | "yearly" | "weekly" | "daily" | undefined {
+  const period = whopProduct?.billing_period || whopProduct?.interval || whopProduct?.frequency;
   if (!period) return undefined;
-  
-  const periodStr = period.toLowerCase();
-  
+
+  const periodStr = String(period).toLowerCase();
   if (periodStr.includes("month")) return "monthly";
   if (periodStr.includes("year") || periodStr.includes("annual")) return "yearly";
   if (periodStr.includes("week")) return "weekly";
   if (periodStr.includes("day")) return "daily";
-  
   return undefined;
 }
 
-/**
- * Extract features from product description
- */
 function extractFeaturesFromText(description: string | undefined): string[] {
   if (!description) return [];
-  
+
   const features: string[] = [];
-  
-  // Look for bullet points or numbered lists
   const bulletPoints = description.match(/[•\-\*]\s*([^\n\r]+)/g);
   if (bulletPoints) {
-    features.push(...bulletPoints.map(point => point.replace(/[•\-\*]\s*/, "").trim()));
+    features.push(...bulletPoints.map((point) => point.replace(/[•\-\*]\s*/, "").trim()));
   }
-  
-  // Look for "Features:" section - using case-insensitive flag only
+
   const featuresMatch = description.match(/features?:\s*\n?(.*?)(?:\n\n|benefits?:|$)/i);
-  if (featuresMatch && featuresMatch[1]) {
+  if (featuresMatch?.[1]) {
     const featureLines = featuresMatch[1]
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .slice(0, 10); // Limit to 10 features
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .slice(0, 10);
     features.push(...featureLines);
   }
-  
-  return [...new Set(features)]; // Remove duplicates
+
+  return [...new Set(features)];
 }
 
-/**
- * Extract benefits from product description
- */
 function extractBenefitsFromText(description: string | undefined): string[] {
   if (!description) return [];
-  
+
   const benefits: string[] = [];
-  
-  // Look for "Benefits:" section - using case-insensitive flag only
   const benefitsMatch = description.match(/benefits?:\s*\n?(.*?)(?:\n\n|features?:|$)/i);
-  if (benefitsMatch && benefitsMatch[1]) {
+  if (benefitsMatch?.[1]) {
     const benefitLines = benefitsMatch[1]
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .slice(0, 10); // Limit to 10 benefits
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .slice(0, 10);
     benefits.push(...benefitLines);
   }
-  
-  return [...new Set(benefits)]; // Remove duplicates
+
+  return [...new Set(benefits)];
 }
 
-/**
- * Test the Whop API connection and fetch products using SDK with userToken
- */
 export const testWhopConnection = action({
   args: {
     companyId: v.id("companies"),
     userToken: v.optional(v.string()),
+    whopUserId: v.optional(v.string()),
   },
-  handler: async (ctx, { companyId, userToken }): Promise<any> => {
+  handler: async (ctx, { companyId, userToken, whopUserId }): Promise<any> => {
     try {
       const company: any = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId,
       });
 
-      if (!company) {
-        throw new Error("Company not found");
+      if (!company || !company.whopCompanyId) {
+        throw new Error("Company not found or missing Whop company ID");
       }
 
-      if (!company.whopCompanyId) {
-        throw new Error("No Whop company ID found");
-      }
-
-      console.log(`[testWhopConnection] Company: ${company.whopCompanyId}`);
-      console.log(`[testWhopConnection] Has userToken: ${!!userToken}`);
-
-      const allCompanyProducts: any[] = [];
-
-      // Use Whop SDK with product_types: ['regular'] filter
-      // Requires access_pass:basic:read permission in Whop developer dashboard
-      const { apiKey, appId } = getWhopConfig();
-      console.log(`[testWhopConnection] Using Whop SDK with product_types: ['regular']`);
-
-      const sdk = new Whop({ apiKey, appID: appId });
-
-      let count = 0;
-      for await (const product of sdk.products.list({
-        company_id: company.whopCompanyId,
-        product_types: ['regular']
-      })) {
-        allCompanyProducts.push(product);
-        count++;
-        if (count >= 50) break;  // Limit for test
-      }
-
-      console.log(`[testWhopConnection] Found ${allCompanyProducts.length} products`);
+      const result = await fetchProductsForSync(company.whopCompanyId, whopUserId);
 
       return {
-        success: true,
-        message: `Successfully connected to Whop. Found ${allCompanyProducts.length} products for this company.`,
+        success: result.hadSuccessfulSource,
+        message: result.hadSuccessfulSource
+          ? `Fetched ${result.products.length} products using ${result.source}`
+          : result.errors[0] || "Failed to connect to Whop",
         companyId: company.whopCompanyId,
-        tokenType: userToken ? "SDK_WITH_USER_TOKEN" : "HTTP_API_FALLBACK",
-        sampleProducts: allCompanyProducts.slice(0, 10).map((p: any) => ({
-          id: p.id,
-          title: p.title || p.name || "Untitled",
-          type: p.product_type || p.type || "product",
-          visible: p.visibility || "unknown",
-          company_id: p.company_id || p.companyId || "unknown",
+        tokenType: whopUserId
+          ? "ON_BEHALF_OF_USER"
+          : userToken
+            ? "RAW_TOKEN_UNUSED_NEEDS_WHOOP_USER_ID"
+            : "APP_KEY_OR_LEGACY_FALLBACK",
+        source: result.source,
+        sampleProducts: result.products.slice(0, 10).map((product) => ({
+          id: product.id,
+          title: product.title,
+          visible: product.visibility,
+          company_id: product.companyId,
         })),
+        errors: result.errors,
       };
-
     } catch (error) {
       return {
         success: false,
         message: `Failed to connect to Whop: ${error instanceof Error ? error.message : String(error)}`,
         sampleProducts: [],
+        errors: [error instanceof Error ? error.message : String(error)],
       };
     }
   },
 });
 
-/**
- * Sync products for ALL companies (used by cron job)
- *
- * This internal action iterates through all companies and syncs their products.
- * Runs periodically to keep product data fresh.
- */
 export const syncAllCompaniesProducts = internalAction({
   args: {},
   handler: async (ctx): Promise<{
@@ -636,54 +648,38 @@ export const syncAllCompaniesProducts = internalAction({
     console.log("[syncAllCompaniesProducts] Starting scheduled product sync...");
 
     try {
-      // Get all companies
       const companies = await ctx.runQuery(api.companies.queries.getAllCompanies, {});
-
-      console.log(`[syncAllCompaniesProducts] Found ${companies.length} companies to sync`);
-
       let successCount = 0;
       let errorCount = 0;
       const errors: string[] = [];
 
-      // Sync each company's products
       for (const company of companies) {
         try {
-          console.log(`[syncAllCompaniesProducts] Syncing products for company: ${company._id} (${company.name})`);
-
           const result = await ctx.runAction(api.products.actions.syncProducts, {
             companyId: company._id,
           });
 
           if (result.success) {
             successCount++;
-            console.log(`[syncAllCompaniesProducts] ✅ Company ${company.name}: synced ${result.syncedCount} products`);
           } else {
             errorCount++;
-            const errorMsg = `Company ${company.name}: ${result.errors.join(", ")}`;
-            errors.push(errorMsg);
-            console.error(`[syncAllCompaniesProducts] ❌ ${errorMsg}`);
+            errors.push(`Company ${company.name}: ${result.errors.join(", ")}`);
           }
         } catch (error) {
           errorCount++;
-          const errorMsg = `Company ${company.name}: ${error instanceof Error ? error.message : String(error)}`;
-          errors.push(errorMsg);
-          console.error(`[syncAllCompaniesProducts] ❌ ${errorMsg}`);
+          errors.push(`Company ${company.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        // Small delay between companies to avoid rate limiting
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-
-      console.log(`[syncAllCompaniesProducts] Sync complete. Success: ${successCount}, Errors: ${errorCount}`);
 
       return {
         totalCompanies: companies.length,
         successCount,
         errorCount,
-        errors: errors.slice(0, 10), // Limit errors returned
+        errors: errors.slice(0, 10),
       };
     } catch (error) {
-      console.error("[syncAllCompaniesProducts] Failed:", error);
       return {
         totalCompanies: 0,
         successCount: 0,

@@ -1,85 +1,178 @@
+"use node";
+
 /**
  * Whop Plans Actions
  *
- * Actions for syncing pricing plans from Whop API
+ * Sync pricing plans from the company-level GraphQL API and keep only plans
+ * that belong to the current non-archived product catalog.
  */
 
-"use node";
-
+import { WhopServerSdk } from "@whop/api";
 import { v } from "convex/values";
-import { action } from "../_generated/server";
 import { api } from "../_generated/api";
+import { action } from "../_generated/server";
 import { getWhopConfig } from "../lib/whop";
-import Whop from "@whop/sdk";
 
-/**
- * Fetch with retry and exponential backoff
- *
- * Retries on server errors (5xx) and network failures.
- * Does NOT retry on client errors (4xx) as those are permanent failures.
- */
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-  maxRetries: number = 3,
-  baseDelayMs: number = 1000
-): Promise<Response> {
-  let lastError: Error | null = null;
+type SyncSource =
+  | "company_plans_on_behalf_of"
+  | "company_plans_app"
+  | "none";
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+type PlanFetchResult = {
+  source: SyncSource;
+  plans: any[];
+  errors: string[];
+  hadSuccessfulSource: boolean;
+};
+
+function getBaseWhopServerSdk() {
+  const { apiKey, appId } = getWhopConfig();
+  return WhopServerSdk({ appApiKey: apiKey, appId });
+}
+
+function getOnBehalfOfSdk(whopUserId?: string) {
+  const base = getBaseWhopServerSdk();
+  return whopUserId ? base.withUser(whopUserId) : base;
+}
+
+async function listCompanyPlans(
+  sdk: ReturnType<typeof WhopServerSdk>,
+  companyId: string
+) {
+  const plans: any[] = [];
+  let after: string | undefined;
+
+  while (plans.length < 500) {
+    const response: any = await sdk.companies.listPlans({
+      companyId,
+      first: 100,
+      ...(after ? { after } : {}),
+    } as any);
+
+    const nodes = response?.plans?.nodes || [];
+    for (const node of nodes) {
+      plans.push(node);
+      if (plans.length >= 500) break;
+    }
+
+    const pageInfo = response?.plans?.pageInfo;
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || nodes.length === 0) {
+      break;
+    }
+    after = pageInfo.endCursor;
+  }
+
+  return plans;
+}
+
+async function fetchPlansForSync(
+  companyId: string,
+  whopUserId?: string
+): Promise<PlanFetchResult> {
+  const errors: string[] = [];
+
+  if (whopUserId) {
     try {
-      const response = await fetch(url, options);
-
-      // Don't retry on client errors (4xx) - those are permanent
-      if (response.status >= 400 && response.status < 500) {
-        return response;
-      }
-
-      // Retry on server errors (5xx)
-      if (response.status >= 500) {
-        const errorText = await response.text();
-        throw new Error(`Server error ${response.status}: ${errorText}`);
-      }
-
-      return response;
+      const plans = await listCompanyPlans(getOnBehalfOfSdk(whopUserId), companyId);
+      return {
+        source: "company_plans_on_behalf_of",
+        plans,
+        errors,
+        hadSuccessfulSource: true,
+      };
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-
-      if (attempt < maxRetries - 1) {
-        // Exponential backoff: 1s, 3s, 9s
-        const delay = baseDelayMs * Math.pow(3, attempt);
-        console.log(
-          `[fetchWithRetry] Attempt ${attempt + 1}/${maxRetries} failed: ${lastError.message}. Retrying in ${delay}ms...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
+      errors.push(
+        `On-behalf-of company plan sync failed: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
-  console.error(`[fetchWithRetry] All ${maxRetries} attempts failed`);
-  throw lastError || new Error("Max retries exceeded");
+  try {
+    const plans = await listCompanyPlans(getBaseWhopServerSdk(), companyId);
+    return {
+      source: "company_plans_app",
+      plans,
+      errors,
+      hadSuccessfulSource: true,
+    };
+  } catch (error) {
+    errors.push(
+      `App-key company plan sync failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  return {
+    source: "none",
+    plans: [],
+    errors,
+    hadSuccessfulSource: false,
+  };
 }
 
-/**
- * Sync all plans from Whop for a company
- *
- * Plans contain the actual pricing information for products.
- * Each product can have multiple plans (e.g., monthly, yearly, lifetime).
- */
+function getPlanProductId(plan: any) {
+  return (
+    plan.accessPass?.id ||
+    plan.product?.id ||
+    plan.productId ||
+    plan.product_id ||
+    ""
+  );
+}
+
+function getPlanTitle(plan: any) {
+  return plan.title || plan.internalNotes || plan.name || "Untitled Plan";
+}
+
+function getPlanInitialPrice(plan: any) {
+  const value =
+    plan.rawInitialPrice ??
+    plan.initial_price ??
+    plan.initialPrice;
+  return value !== undefined && value !== null ? Math.round(value) : undefined;
+}
+
+function getPlanRenewalPrice(plan: any) {
+  const value =
+    plan.rawRenewalPrice ??
+    plan.renewal_price ??
+    plan.renewalPrice;
+  return value !== undefined && value !== null ? Math.round(value) : undefined;
+}
+
+function getPlanCurrency(plan: any) {
+  return String(
+    plan.currency || plan.baseCurrency || plan.base_currency || "usd"
+  ).toLowerCase();
+}
+
+function getPlanBillingPeriod(plan: any) {
+  return plan.billingPeriod ?? plan.billing_period ?? undefined;
+}
+
+function getPlanType(plan: any): "renewal" | "one_time" {
+  const planType = String(plan.planType || plan.plan_type || "renewal").toLowerCase();
+  return planType === "one_time" ? "one_time" : "renewal";
+}
+
 export const syncPlans = action({
   args: {
     companyId: v.id("companies"),
+    whopUserId: v.optional(v.string()),
   },
-  handler: async (ctx, { companyId }): Promise<{
+  handler: async (ctx, { companyId, whopUserId }): Promise<{
     success: boolean;
     syncedCount: number;
     deletedCount: number;
+    skippedArchived: number;
+    skippedUnlinked: number;
+    source: SyncSource;
     errors: string[];
   }> => {
-    console.log(`[syncPlans] Starting sync for company: ${companyId}`);
+    console.log(
+      `[syncPlans] Starting sync for company: ${companyId}, hasWhopUserId: ${!!whopUserId}`
+    );
 
     try {
-      // Get company data to find Whop company ID
       const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId,
       });
@@ -92,211 +185,117 @@ export const syncPlans = action({
         throw new Error("No Whop company ID found for this company");
       }
 
-      console.log(`[syncPlans] Fetching plans for Whop company: ${company.whopCompanyId}`);
+      const products = await ctx.runQuery(api.products.queries.getCompanyProducts, {
+        companyId,
+        includeHidden: true,
+        includeInactive: true,
+      });
 
-      // Get App API key and App ID
-      const { apiKey, appId } = getWhopConfig();
-
-      // Get existing products first - we'll fetch plans for each product
-      console.log(`[syncPlans] Fetching products first...`);
-
-      // Get existing products to link plans
-      const products = await ctx.runQuery(
-        api.products.queries.getCompanyProducts,
-        { companyId, includeHidden: true, includeInactive: true }
-      );
-
-      // Create a map of whopProductId -> productId for linking
+      const activeProducts = products.filter((product: any) => product.isActive === true);
       const productMap = new Map<string, string>();
-      for (const product of products) {
+      for (const product of activeProducts) {
         productMap.set(product.whopProductId, product._id);
       }
 
-      console.log(`[syncPlans] Have ${products.length} products, fetching plans for each...`);
-
-      // Fetch plans for each product using SDK
-      const sdk = new Whop({ apiKey, appID: appId });
-      const companyPlans: any[] = [];
-
-      for (const product of products) {
-        try {
-          console.log(`[syncPlans] Fetching plans for product: ${product.title} (${product.whopProductId})`);
-
-          // Use SDK to get plans for this specific product
-          for await (const plan of sdk.plans.list({ product_id: product.whopProductId } as any)) {
-            companyPlans.push({
-              ...plan,
-              _linkedProductId: product.whopProductId, // Track which product this came from
-            });
-          }
-        } catch (err) {
-          // Log but continue - some products may not have plans
-          console.log(`[syncPlans] Could not fetch plans for ${product.title}: ${err instanceof Error ? err.message : String(err)}`);
-        }
+      const fetchResult = await fetchPlansForSync(company.whopCompanyId, whopUserId);
+      if (!fetchResult.hadSuccessfulSource) {
+        return {
+          success: false,
+          syncedCount: 0,
+          deletedCount: 0,
+          skippedArchived: 0,
+          skippedUnlinked: 0,
+          source: fetchResult.source,
+          errors: fetchResult.errors.length > 0 ? fetchResult.errors : ["Failed to fetch plans"],
+        };
       }
 
-      console.log(`[syncPlans] Found ${companyPlans.length} plans total`);
-
-      // Sync each plan
       let syncedCount = 0;
-      const errors: string[] = [];
+      let skippedArchived = 0;
+      let skippedUnlinked = 0;
+      const errors = [...fetchResult.errors];
       const syncedPlanIds: string[] = [];
 
-      for (const whopPlan of companyPlans) {
+      for (const whopPlan of fetchResult.plans) {
         try {
-          // Get the Whop product ID from the plan (use our linked ID if available)
-          const whopProductId =
-            whopPlan._linkedProductId || whopPlan.product?.id || whopPlan.product_id || "";
+          const whopProductId = getPlanProductId(whopPlan);
+          if (!whopProductId || !productMap.has(whopProductId)) {
+            skippedUnlinked++;
+            continue;
+          }
 
-          // Find our internal product ID
+          const visibility = String(whopPlan.visibility || "visible").toLowerCase();
+          if (visibility === "archived") {
+            skippedArchived++;
+            continue;
+          }
+
           const productId = productMap.get(whopProductId);
-
-          // Map plan data to our schema
-          // Note: Convert null values to undefined for Convex compatibility
-          const planData = {
+          await ctx.runMutation(api.whopPlans.mutations.upsertPlan, {
             companyId,
-            productId: productId as any, // Can be undefined
+            productId: productId as any,
             whopPlanId: whopPlan.id,
             whopProductId,
             whopCompanyId: company.whopCompanyId,
-            title: whopPlan.title || whopPlan.name || "Untitled Plan",
+            title: getPlanTitle(whopPlan),
             description: whopPlan.description || undefined,
-            // Handle prices - keep 0 as 0 (for Free plans), only undefined if not present
-            initialPrice: whopPlan.initial_price !== undefined && whopPlan.initial_price !== null
-              ? Math.round(whopPlan.initial_price)
-              : undefined,
-            renewalPrice: whopPlan.renewal_price !== undefined && whopPlan.renewal_price !== null
-              ? Math.round(whopPlan.renewal_price)
-              : undefined,
-            currency: (whopPlan.currency || "usd").toLowerCase(),
-            billingPeriod: whopPlan.billing_period || undefined,
-            planType: (whopPlan.plan_type === "one_time"
-              ? "one_time"
-              : "renewal") as "renewal" | "one_time",
-            trialPeriodDays: whopPlan.trial_period_days || undefined,
-            expirationDays: whopPlan.expiration_days || undefined,
-            visibility: whopPlan.visibility || "visible",
+            initialPrice: getPlanInitialPrice(whopPlan),
+            renewalPrice: getPlanRenewalPrice(whopPlan),
+            currency: getPlanCurrency(whopPlan),
+            billingPeriod: getPlanBillingPeriod(whopPlan),
+            planType: getPlanType(whopPlan),
+            trialPeriodDays: whopPlan.trialPeriodDays ?? whopPlan.trial_period_days ?? undefined,
+            expirationDays: whopPlan.expirationDays ?? whopPlan.expiration_days ?? undefined,
+            visibility,
             stock: whopPlan.stock ?? undefined,
-            unlimitedStock: whopPlan.unlimited_stock ?? undefined,
-            memberCount: whopPlan.member_count ?? undefined,
-            purchaseUrl: whopPlan.purchase_url || undefined,
+            unlimitedStock: whopPlan.unlimitedStock ?? whopPlan.unlimited_stock ?? undefined,
+            memberCount: whopPlan.memberCount ?? whopPlan.member_count ?? undefined,
+            purchaseUrl: whopPlan.purchaseUrl ?? whopPlan.purchase_url ?? undefined,
             rawWhopData: whopPlan,
-          };
+          });
 
-          await ctx.runMutation(api.whopPlans.mutations.upsertPlan, planData);
           syncedPlanIds.push(whopPlan.id);
           syncedCount++;
-        } catch (err) {
-          const errorMsg = `Failed to sync plan ${whopPlan.id}: ${err instanceof Error ? err.message : String(err)}`;
-          console.error(`[syncPlans] ${errorMsg}`);
-          errors.push(errorMsg);
+        } catch (error) {
+          errors.push(
+            `Failed to sync plan ${whopPlan.id}: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
 
-      // Delete plans that are no longer in Whop
-      const deletedCount = await ctx.runMutation(
+      const deletedStalePlans = await ctx.runMutation(
         api.whopPlans.mutations.deleteStalePlans,
         { companyId, activeWhopPlanIds: syncedPlanIds }
       );
 
-      console.log(
-        `[syncPlans] Sync complete. Synced: ${syncedCount}, Deleted: ${deletedCount}, Errors: ${errors.length}`
+      const catalogCleanup = await ctx.runMutation(
+        api.whopPlans.mutations.cleanupPlansForProducts,
+        {
+          companyId,
+          activeWhopProductIds: Array.from(productMap.keys()),
+        }
       );
 
       return {
         success: errors.length === 0,
         syncedCount,
-        deletedCount,
+        deletedCount: deletedStalePlans + catalogCleanup.deletedCount,
+        skippedArchived,
+        skippedUnlinked,
+        source: fetchResult.source,
         errors,
       };
-    } catch (err) {
-      const errorMsg = `Plan sync failed: ${err instanceof Error ? err.message : String(err)}`;
+    } catch (error) {
+      const errorMsg = `Plan sync failed: ${error instanceof Error ? error.message : String(error)}`;
       console.error(`[syncPlans] ${errorMsg}`);
       return {
         success: false,
         syncedCount: 0,
         deletedCount: 0,
+        skippedArchived: 0,
+        skippedUnlinked: 0,
+        source: "none",
         errors: [errorMsg],
-      };
-    }
-  },
-});
-
-/**
- * Test connection to Whop Plans API
- */
-export const testPlansConnection = action({
-  args: {
-    companyId: v.id("companies"),
-  },
-  handler: async (
-    ctx,
-    { companyId }
-  ): Promise<{
-    success: boolean;
-    message: string;
-    samplePlans: any[];
-  }> => {
-    try {
-      const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
-        companyId,
-      });
-
-      if (!company || !company.whopCompanyId) {
-        return {
-          success: false,
-          message: "Company not found or missing Whop company ID",
-          samplePlans: [],
-        };
-      }
-
-      const { apiKey } = getWhopConfig();
-
-      // Use v5 /app/plans endpoint (same as products)
-      const response = await fetchWithRetry(
-        `https://api.whop.com/api/v5/app/plans?page=1&per=100`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            Accept: "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          message: `API error (${response.status}): ${errorText}`,
-          samplePlans: [],
-        };
-      }
-
-      const data = await response.json();
-      // Filter plans for this company only
-      const companyPlans = (data.data || []).filter(
-        (p: any) => p.company_id === company.whopCompanyId
-      );
-
-      return {
-        success: true,
-        message: `Found ${companyPlans.length} plans for this company`,
-        samplePlans: companyPlans.slice(0, 5).map((p: any) => ({
-          id: p.id,
-          title: p.title || p.name,
-          price: p.initial_price,
-          currency: p.currency,
-          type: p.plan_type,
-          visibility: p.visibility,
-          productId: p.product?.id || p.product_id,
-        })),
-      };
-    } catch (err) {
-      return {
-        success: false,
-        message: `Connection test failed: ${err instanceof Error ? err.message : String(err)}`,
-        samplePlans: [],
       };
     }
   },

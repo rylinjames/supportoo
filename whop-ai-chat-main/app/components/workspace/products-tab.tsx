@@ -13,22 +13,19 @@ import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { hasNonArchivedPlan, shouldShowProduct } from "./products-filter";
 
 interface ProductsTabProps {
   companyId: Id<"companies">;
 }
 
 export function ProductsTab({ companyId }: ProductsTabProps) {
-  const { userToken } = useUser();
+  const { userToken, userData } = useUser();
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isSyncingPlans, setIsSyncingPlans] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [showHiddenProducts, setShowHiddenProducts] = useState(false);
 
-  // Query products with filter based on toggle state
-  const queryProducts = useQuery(
-    api.products.queries.getCompanyProducts,
+  const products = useQuery(
+    api.products.queries.getCompanyProductCatalog,
     {
       companyId,
       includeHidden: showHiddenProducts,
@@ -36,39 +33,14 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     }
   );
 
-  // Also query all products to get counts for hidden/inactive
   const allProducts = useQuery(
-    api.products.queries.getCompanyProducts,
+    api.products.queries.getCompanyProductCatalog,
     { companyId, includeHidden: true, includeInactive: true }
   );
 
-  // Query plans for all products
-  const plans = useQuery(
-    api.whopPlans.queries.getCompanyPlans,
-    { companyId, includeHidden: true }
-  );
-
-  // Group plans by whopProductId for easy lookup
-  const plansByProduct = plans?.reduce((acc: Record<string, any[]>, plan: any) => {
-    if (!acc[plan.whopProductId]) {
-      acc[plan.whopProductId] = [];
-    }
-    acc[plan.whopProductId].push(plan);
-    return acc;
-  }, {} as Record<string, any[]>) || {};
-
-  const products = queryProducts?.filter((p) => {
-    const productPlans = plansByProduct[p.whopProductId] || [];
-    if (!hasNonArchivedPlan(productPlans)) return false;
-    return shouldShowProduct(
-      { isVisible: p.isVisible, isActive: p.isActive },
-      showHiddenProducts
-    );
-  });
-
   // Calculate hidden product counts
   const hiddenCount = allProducts
-    ? allProducts.filter(p => !p.isVisible || !p.isActive).length
+    ? allProducts.filter((p: any) => !p.isVisible || !p.isActive).length
     : 0;
 
   // Get last sync time from most recently synced product
@@ -78,7 +50,6 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
 
   // Actions
   const syncProducts = useAction(api.products.actions.syncProducts);
-  const syncPlans = useAction(api.whopPlans.actions.syncPlans);
 
   // Mutations
   const toggleAIInclusion = useMutation(api.products.mutations.toggleProductAIInclusion);
@@ -100,29 +71,18 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     setIsSyncing(true);
 
     try {
-      const result = await syncProducts({ companyId, userToken });
+      const result = await syncProducts({
+        companyId,
+        userToken,
+        whopUserId: userData?.user?.whopUserId,
+      });
 
       if (result.success) {
         toast.success(
           `Successfully synced ${result.syncedCount} products` +
-          (result.deletedCount > 0 ? ` (removed ${result.deletedCount} outdated)` : "")
+          (result.deletedCount > 0 ? ` (removed ${result.deletedCount} outdated)` : "") +
+          (result.deletedPlans > 0 ? ` and ${result.deletedPlans} stale plans` : "")
         );
-
-        // Also sync plans after products
-        setIsSyncingPlans(true);
-        try {
-          const planResult = await syncPlans({ companyId });
-          if (planResult.success) {
-            toast.success(`Synced ${planResult.syncedCount} pricing plans`);
-          } else {
-            toast.error("Failed to sync plans: " + (planResult.errors?.[0] || "Unknown error"));
-          }
-        } catch (planError) {
-          console.error("Plan sync failed:", planError);
-          toast.error(`Plan sync failed: ${planError instanceof Error ? planError.message : "Unknown error"}`);
-        } finally {
-          setIsSyncingPlans(false);
-        }
       } else {
         toast.error("Failed to sync products: " + (result.errors?.[0] || "Unknown error"));
       }
@@ -165,6 +125,13 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(price / 100);
+  };
+
+  const getEffectivePlanPrice = (plan: any) => {
+    if (plan.planType === "renewal") {
+      return plan.renewalPrice ?? plan.initialPrice ?? 0;
+    }
+    return plan.initialPrice ?? plan.renewalPrice ?? 0;
   };
 
   const formatRelativeTime = (timestamp: number) => {
@@ -231,11 +198,11 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
               </>
             )}
           </Button>
-          <Button onClick={handleSyncProducts} disabled={isSyncing || isSyncingPlans} size="sm">
-            {isSyncing || isSyncingPlans ? (
+          <Button onClick={handleSyncProducts} disabled={isSyncing} size="sm">
+            {isSyncing ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {isSyncing ? "Syncing..." : "Syncing Plans..."}
+                Syncing...
               </>
             ) : (
               <>
@@ -295,7 +262,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
             </div>
           ))}
         </div>
-      ) : products.length === 0 ? (
+      ) : (products?.length || 0) === 0 ? (
         /* Empty State */
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="p-6 rounded-full bg-secondary/50 mb-6">
@@ -313,10 +280,8 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
       ) : (
         /* Products Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {products.map((product: any) => {
-            const productPlans = (plansByProduct[product.whopProductId] || []).filter(
-              (plan: any) => (plan.visibility || "").toLowerCase() !== "archived"
-            );
+          {products?.map((product: any) => {
+            const productPlans = product.pricingOptions || [];
             // Default to true if includeInAI is not set
             const isIncludedInAI = product.includeInAI !== false;
 
@@ -356,8 +321,8 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                             {plan.title || "Unnamed Plan"}
                           </span>
                           <span className="text-xs text-muted-foreground shrink-0">
-                            {plan.initialPrice
-                              ? formatPrice(plan.initialPrice, plan.currency)
+                            {getEffectivePlanPrice(plan) > 0
+                              ? formatPrice(getEffectivePlanPrice(plan), plan.currency)
                               : "Free"}
                             {plan.planType === "renewal" && plan.billingPeriod && (
                               <>

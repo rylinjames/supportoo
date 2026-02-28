@@ -241,20 +241,12 @@ export const generateChatResponse = action({
         timestamp: new Date(messages[messages.length - 1].timestamp).toISOString()
       } : "none");
 
-      // 3. Get company products for AI context (only visible and active products)
+      // 3. Get canonical product catalog for AI context
       console.log("\n📊 STEP 3.5: Fetching company products...");
-      const products = await ctx.runQuery(api.products.queries.getVisibleActiveProducts, {
+      const products = await ctx.runQuery(api.products.queries.getVisibleProductCatalogForAI, {
         companyId: conversation.companyId,
       });
       console.log("🛍️ Products fetched:", products.length);
-
-      // 3.6 Get pricing plans for AI context
-      console.log("\n📊 STEP 3.6: Fetching pricing plans...");
-      const plansByProduct = await ctx.runQuery(api.whopPlans.queries.getVisiblePlansForAI, {
-        companyId: conversation.companyId,
-      });
-      const planCount = Object.values(plansByProduct).flat().length;
-      console.log("💰 Plans fetched:", planCount);
 
       // 4. Build the system message with company context
       console.log("\n📊 STEP 4: Building system message...");
@@ -332,13 +324,19 @@ export const generateChatResponse = action({
           productTitles: products.slice(0, 3).map((p: any) => p.title)
         });
 
-        // Helper function to format price - handles FREE plans correctly
-        // Note: Whop API returns prices in DOLLARS, not cents
-        const formatPrice = (priceInDollars: number | undefined, currency: string) => {
-          if (priceInDollars === undefined || priceInDollars === null) return null;
-          if (priceInDollars === 0) return "Free";
-          const price = priceInDollars.toFixed(2);
+        // Stored plan prices are represented in cents in the existing table.
+        const formatPrice = (priceInCents: number | undefined, currency: string) => {
+          if (priceInCents === undefined || priceInCents === null) return null;
+          if (priceInCents === 0) return "Free";
+          const price = (priceInCents / 100).toFixed(2);
           return `${currency.toUpperCase()} $${price}`;
+        };
+
+        const getEffectivePlanPrice = (plan: any) => {
+          if (plan.planType === "renewal") {
+            return plan.renewalPrice ?? plan.initialPrice;
+          }
+          return plan.initialPrice ?? plan.renewalPrice;
         };
 
         // Helper function to format billing period (days to readable)
@@ -355,14 +353,13 @@ export const generateChatResponse = action({
 ${products.map((product: any) => {
   let productInfo = `• ${product.title}`;
 
-  // Get plans for this product from plansByProduct
-  const productPlans = plansByProduct[product.whopProductId] || [];
+  const productPlans = product.pricingOptions || [];
 
   // Add pricing from plans
   if (productPlans.length > 0) {
     productInfo += `\n  Pricing Options:`;
     for (const plan of productPlans) {
-      const price = formatPrice(plan.initialPrice, plan.currency);
+      const price = formatPrice(getEffectivePlanPrice(plan), plan.currency);
       // Always show the plan, even if FREE
       if (price === "Free") {
         productInfo += `\n    - ${plan.title}: Free`;
@@ -738,7 +735,7 @@ ${company.aiSystemPrompt || ""}`;
         responseCheck.includes('purchase') ||
         responseCheck.includes('course') ||
         (company.name && responseCheck.includes(company.name.toLowerCase())) ||
-        productTitlesLower.some(title => title && responseCheck.includes(title));
+        productTitlesLower.some((title: string) => title && responseCheck.includes(title));
       
       // If response is long (>500 chars) and doesn't contain relevant terms, it's likely off-topic
       const suspiciouslyOffTopic = response.length > 500 && !containsRelevantTerms;

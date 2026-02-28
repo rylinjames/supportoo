@@ -8,6 +8,17 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
 
+function getEffectivePlanPrice(plan: {
+  initialPrice?: number;
+  renewalPrice?: number;
+  planType: "renewal" | "one_time";
+}) {
+  if (plan.planType === "renewal") {
+    return plan.renewalPrice ?? plan.initialPrice ?? 0;
+  }
+  return plan.initialPrice ?? plan.renewalPrice ?? 0;
+}
+
 /**
  * Get all Whop plans for a company
  */
@@ -50,8 +61,8 @@ export const getPlansForProduct = query({
 
     // Sort by price (lowest first)
     return plans.sort((a, b) => {
-      const priceA = a.initialPrice || 0;
-      const priceB = b.initialPrice || 0;
+      const priceA = getEffectivePlanPrice(a);
+      const priceB = getEffectivePlanPrice(b);
       return priceA - priceB;
     });
   },
@@ -82,8 +93,8 @@ export const getPlansByWhopProductId = query({
 
     // Sort by price (lowest first)
     return plans.sort((a, b) => {
-      const priceA = a.initialPrice || 0;
-      const priceB = b.initialPrice || 0;
+      const priceA = getEffectivePlanPrice(a);
+      const priceB = getEffectivePlanPrice(b);
       return priceA - priceB;
     });
   },
@@ -139,8 +150,8 @@ export const getVisiblePlansForAI = query({
     // Sort plans within each group by price
     for (const productId in plansByProduct) {
       plansByProduct[productId].sort((a, b) => {
-        const priceA = a.initialPrice || 0;
-        const priceB = b.initialPrice || 0;
+        const priceA = getEffectivePlanPrice(a);
+        const priceB = getEffectivePlanPrice(b);
         return priceA - priceB;
       });
     }

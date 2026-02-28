@@ -903,6 +903,7 @@ export const onboardUser = action({
               ctx.scheduler.runAfter(0, api.products.actions.syncProducts, {
                 companyId: company._id,
                 userToken: userToken,
+                whopUserId: whopUserId,
               });
               console.log(`[onboardUser] Product sync scheduled for company: ${company._id} with userToken: ${!!userToken}`);
             } catch (syncError) {

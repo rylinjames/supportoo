@@ -285,6 +285,41 @@ export const excludeProducts = mutation({
 });
 
 /**
+ * Force cleanup checkout link products for a company.
+ *
+ * Removes products whose Whop visibility is "quick_link" (checkout links)
+ * since those are transient purchase URLs, not real catalog products.
+ */
+export const forceCleanupCheckoutLinks = mutation({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    const allProducts = await ctx.db
+      .query("products")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    const checkoutLinkProducts = allProducts.filter((product) => {
+      const rawData = product.rawWhopData as any;
+      return rawData?.visibility === "quick_link";
+    });
+
+    const deletedProducts: Array<{ id: string; title: string }> = [];
+    for (const product of checkoutLinkProducts) {
+      deletedProducts.push({ id: product.whopProductId, title: product.title });
+      await ctx.db.delete(product._id);
+    }
+
+    return {
+      deletedCount: checkoutLinkProducts.length,
+      remainingCount: allProducts.length - checkoutLinkProducts.length,
+      deletedProducts,
+    };
+  },
+});
+
+/**
  * Remove products from exclusion list (unblock)
  */
 export const unexcludeProducts = mutation({

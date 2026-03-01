@@ -19,7 +19,6 @@ export const upsertPlan = mutation({
     whopCompanyId: v.string(),
     title: v.string(),
     description: v.optional(v.string()),
-    internalNotes: v.optional(v.string()),
     initialPrice: v.optional(v.number()),
     renewalPrice: v.optional(v.number()),
     currency: v.string(),
@@ -56,7 +55,6 @@ export const upsertPlan = mutation({
         whopCompanyId: args.whopCompanyId,
         title: args.title,
         description: args.description,
-        internalNotes: args.internalNotes,
         initialPrice: args.initialPrice,
         renewalPrice: args.renewalPrice,
         currency: args.currency,
@@ -86,7 +84,6 @@ export const upsertPlan = mutation({
         whopCompanyId: args.whopCompanyId,
         title: args.title,
         description: args.description,
-        internalNotes: args.internalNotes,
         initialPrice: args.initialPrice,
         renewalPrice: args.renewalPrice,
         currency: args.currency,
@@ -137,6 +134,60 @@ export const deleteStalePlans = mutation({
     }
 
     return stalePlans.length;
+  },
+});
+
+/**
+ * Remove plans that no longer belong to the current product catalog.
+ *
+ * This is a defensive cleanup step while pricing sync is being redesigned.
+ * It removes archived plans and any plan whose product no longer exists in the
+ * synced product catalog for the company.
+ */
+export const cleanupPlansForProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+    activeWhopProductIds: v.array(v.string()),
+  },
+  handler: async (ctx, { companyId, activeWhopProductIds }) => {
+    const activeIds = new Set(activeWhopProductIds);
+    const allPlans = await ctx.db
+      .query("whopPlans")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    const plansToDelete = allPlans.filter(
+      (plan) =>
+        plan.visibility === "archived" ||
+        !activeIds.has(plan.whopProductId)
+    );
+
+    for (const plan of plansToDelete) {
+      await ctx.db.delete(plan._id);
+    }
+
+    return {
+      deletedCount: plansToDelete.length,
+      keptCount: allPlans.length - plansToDelete.length,
+    };
+  },
+});
+
+export const deleteAllCompanyPlans = mutation({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    const plans = await ctx.db
+      .query("whopPlans")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    for (const plan of plans) {
+      await ctx.db.delete(plan._id);
+    }
+
+    return plans.length;
   },
 });
 

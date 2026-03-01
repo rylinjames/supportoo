@@ -7,62 +7,40 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Package, Clock, EyeOff, Loader2, Bot } from "lucide-react";
+import { RefreshCw, Package, Clock, EyeOff, Loader2, Bot, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@/app/contexts/user-context";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { hasNonArchivedPlan, shouldShowProduct } from "./products-filter";
 
 interface ProductsTabProps {
   companyId: Id<"companies">;
 }
 
 export function ProductsTab({ companyId }: ProductsTabProps) {
-  const { userToken } = useUser();
+  const { userToken, userData } = useUser();
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isSyncingPlans, setIsSyncingPlans] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [showHiddenProducts, setShowHiddenProducts] = useState(false);
 
-  // Always fetch all products (including hidden) so we can auto-show hidden ones with paid plans
+  const products = useQuery(
+    api.products.queries.getCompanyProductCatalog,
+    {
+      companyId,
+      includeHidden: showHiddenProducts,
+      includeInactive: showHiddenProducts,
+    }
+  );
+
   const allProducts = useQuery(
-    api.products.queries.getCompanyProducts,
+    api.products.queries.getCompanyProductCatalog,
     { companyId, includeHidden: true, includeInactive: true }
   );
 
-  // Query plans for all products — always include hidden since pricing plans are often hidden
-  const plans = useQuery(
-    api.whopPlans.queries.getCompanyPlans,
-    { companyId, includeHidden: true }
-  );
-
-  // Group plans by whopProductId for easy lookup
-  const plansByProduct = plans?.reduce((acc: Record<string, any[]>, plan: any) => {
-    if (!acc[plan.whopProductId]) {
-      acc[plan.whopProductId] = [];
-    }
-    acc[plan.whopProductId].push(plan);
-    return acc;
-  }, {} as Record<string, any[]>) || {};
-
-  // Filter products:
-  // 1) hidden/inactive entries are controlled by the toggle
-  // 2) products with only archived plans are always hidden
-  const products = allProducts?.filter(p => {
-    const productPlans = plansByProduct[p.whopProductId] || [];
-    if (!hasNonArchivedPlan(productPlans)) {
-      return false;
-    }
-    return shouldShowProduct(
-      { isVisible: p.isVisible, isActive: p.isActive },
-      showHiddenProducts
-    );
-  });
-
-  // Count all hidden/inactive products controlled by the toggle
+  // Calculate hidden product counts
   const hiddenCount = allProducts
-    ? allProducts.filter(p => !p.isVisible || !p.isActive).length
+    ? allProducts.filter((p: any) => !p.isVisible || !p.isActive).length
     : 0;
 
   // Get last sync time from most recently synced product
@@ -72,10 +50,10 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
 
   // Actions
   const syncProducts = useAction(api.products.actions.syncProducts);
-  const syncPlans = useAction(api.whopPlans.actions.syncPlans);
 
   // Mutations
   const toggleAIInclusion = useMutation(api.products.mutations.toggleProductAIInclusion);
+  const forceCleanupCheckoutLinks = useMutation(api.products.mutations.forceCleanupCheckoutLinks);
 
   const handleToggleAI = async (productId: Id<"products">, currentValue: boolean) => {
     try {
@@ -93,29 +71,18 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     setIsSyncing(true);
 
     try {
-      const result = await syncProducts({ companyId, userToken });
+      const result = await syncProducts({
+        companyId,
+        userToken,
+        whopUserId: userData?.user?.whopUserId,
+      });
 
       if (result.success) {
         toast.success(
           `Successfully synced ${result.syncedCount} products` +
-          (result.deletedCount > 0 ? ` (removed ${result.deletedCount} outdated)` : "")
+          (result.deletedCount > 0 ? ` (removed ${result.deletedCount} outdated)` : "") +
+          (result.deletedPlans > 0 ? ` and ${result.deletedPlans} stale plans` : "")
         );
-
-        // Also sync plans after products
-        setIsSyncingPlans(true);
-        try {
-          const planResult = await syncPlans({ companyId });
-          if (planResult.success) {
-            toast.success(`Synced ${planResult.syncedCount} pricing plans`);
-          } else {
-            toast.error("Failed to sync plans: " + (planResult.errors?.[0] || "Unknown error"));
-          }
-        } catch (planError) {
-          console.error("Plan sync failed:", planError);
-          toast.error(`Plan sync failed: ${planError instanceof Error ? planError.message : "Unknown error"}`);
-        } finally {
-          setIsSyncingPlans(false);
-        }
       } else {
         toast.error("Failed to sync products: " + (result.errors?.[0] || "Unknown error"));
       }
@@ -127,13 +94,44 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     }
   };
 
+  const handleCleanupCheckoutLinks = async () => {
+    if (isCleaningUp) return;
+
+    setIsCleaningUp(true);
+
+    try {
+      const result = await forceCleanupCheckoutLinks({ companyId });
+
+      if (result.deletedCount > 0) {
+        toast.success(
+          `Removed ${result.deletedCount} checkout links. ${result.remainingCount} products remain.`
+        );
+        console.log("Deleted checkout links:", result.deletedProducts);
+      } else {
+        toast.info("No checkout links found to clean up");
+      }
+    } catch (error) {
+      console.error("Cleanup failed:", error);
+      toast.error(`Cleanup failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
   const formatPrice = (price: number, currency: string = "USD") => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency.toUpperCase(),
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      currency: currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(price / 100);
+  };
+
+  const getEffectivePlanPrice = (plan: any) => {
+    if (plan.planType === "renewal") {
+      return plan.renewalPrice ?? plan.initialPrice ?? 0;
+    }
+    return plan.initialPrice ?? plan.renewalPrice ?? 0;
   };
 
   const formatRelativeTime = (timestamp: number) => {
@@ -180,19 +178,40 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
             </p>
           </div>
         </div>
-        <Button onClick={handleSyncProducts} disabled={isSyncing || isSyncingPlans} size="sm">
-          {isSyncing || isSyncingPlans ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              {isSyncing ? "Syncing..." : "Syncing Plans..."}
-            </>
-          ) : (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Sync Now
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleCleanupCheckoutLinks}
+            disabled={isCleaningUp || isSyncing}
+            size="sm"
+            variant="outline"
+            title="Remove checkout links from database"
+          >
+            {isCleaningUp ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Cleaning...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clean Up
+              </>
+            )}
+          </Button>
+          <Button onClick={handleSyncProducts} disabled={isSyncing} size="sm">
+            {isSyncing ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync Now
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Header with filters */}
@@ -243,7 +262,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
             </div>
           ))}
         </div>
-      ) : products.length === 0 ? (
+      ) : (products?.length || 0) === 0 ? (
         /* Empty State */
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="p-6 rounded-full bg-secondary/50 mb-6">
@@ -261,10 +280,8 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
       ) : (
         /* Products Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {products.map((product: any) => {
-            const productPlans = (plansByProduct[product.whopProductId] || []).filter(
-              (plan: any) => (plan.visibility || "").toLowerCase() !== "archived"
-            );
+          {products?.map((product: any) => {
+            const productPlans = product.pricingOptions || [];
             // Default to true if includeInAI is not set
             const isIncludedInAI = product.includeInAI !== false;
 
@@ -304,10 +321,8 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                             {plan.title || "Unnamed Plan"}
                           </span>
                           <span className="text-xs text-muted-foreground shrink-0">
-                            {plan.initialPrice
-                              ? formatPrice(plan.initialPrice, plan.currency)
-                              : plan.renewalPrice
-                              ? formatPrice(plan.renewalPrice, plan.currency)
+                            {getEffectivePlanPrice(plan) > 0
+                              ? formatPrice(getEffectivePlanPrice(plan), plan.currency)
                               : "Free"}
                             {plan.planType === "renewal" && plan.billingPeriod && (
                               <>

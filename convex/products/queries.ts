@@ -180,14 +180,16 @@ export const getCompanyProductCatalog = query({
 /**
  * Canonical product catalog for AI context.
  *
- * Only visible, active, AI-included products are returned.
+ * Includes hidden products (they are real products sold via in-app purchase,
+ * just not listed on the public storefront). Excludes archived and inactive.
+ * Only products with includeInAI !== false are returned.
  */
 export const getVisibleProductCatalogForAI = query({
   args: {
     companyId: v.id("companies"),
   },
   handler: async (ctx, { companyId }) => {
-    const catalog = await buildCompanyProductCatalog(ctx, companyId, false, false, true);
+    const catalog = await buildCompanyProductCatalog(ctx, companyId, true, false, true);
     return catalog.filter((product: any) => product.includeInAI !== false);
   },
 });

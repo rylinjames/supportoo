@@ -220,7 +220,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
 
       {/* Header with filters */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">

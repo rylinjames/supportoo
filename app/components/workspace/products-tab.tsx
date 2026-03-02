@@ -370,7 +370,11 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                       isIncludedInAI ? "text-primary" : "text-muted-foreground"
                     )} />
                     <span className="text-xs text-muted-foreground">
-                      {isIncludedInAI ? "AI can reference this product" : "Hidden from AI"}
+                      {!isIncludedInAI
+                        ? "Hidden from AI"
+                        : (!product.isVisible && company?.aiIncludeHiddenProducts !== true)
+                        ? "Hidden product — AI won't see"
+                        : "AI can reference this product"}
                     </span>
                   </div>
                   <Switch

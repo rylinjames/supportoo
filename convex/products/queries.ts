@@ -189,7 +189,7 @@ export const getVisibleProductCatalogForAI = query({
     companyId: v.id("companies"),
   },
   handler: async (ctx, { companyId }) => {
-    const catalog = await buildCompanyProductCatalog(ctx, companyId, true, false, true);
+    const catalog = await buildCompanyProductCatalog(ctx, companyId, false, false, true);
     return catalog.filter((product: any) => product.includeInAI !== false);
   },
 });

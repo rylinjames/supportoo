@@ -51,9 +51,13 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
   // Actions
   const syncProducts = useAction(api.products.actions.syncProducts);
 
+  // Company setting for AI hidden products
+  const company = useQuery(api.companies.queries.getCompanyById, { companyId });
+
   // Mutations
   const toggleAIInclusion = useMutation(api.products.mutations.toggleProductAIInclusion);
   const forceCleanupCheckoutLinks = useMutation(api.products.mutations.forceCleanupCheckoutLinks);
+  const toggleAIHiddenProducts = useMutation(api.companies.mutations.toggleAIHiddenProducts);
 
   const handleToggleAI = async (productId: Id<"products">, currentValue: boolean) => {
     try {
@@ -233,6 +237,22 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
               <Label htmlFor="show-hidden" className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1">
                 <EyeOff className="h-3 w-3" />
                 Show {hiddenCount} hidden
+              </Label>
+            </div>
+          )}
+          {hiddenCount > 0 && (
+            <div className="flex items-center gap-2">
+              <Switch
+                id="ai-hidden"
+                checked={company?.aiIncludeHiddenProducts === true}
+                onCheckedChange={(checked) => {
+                  toggleAIHiddenProducts({ companyId, aiIncludeHiddenProducts: checked });
+                  toast.success(checked ? "AI can now reference hidden products" : "AI will only reference visible products");
+                }}
+              />
+              <Label htmlFor="ai-hidden" className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1">
+                <Bot className="h-3 w-3" />
+                AI sees hidden
               </Label>
             </div>
           )}

@@ -143,6 +143,22 @@ export const createCompany = mutation({
 });
 
 /**
+ * Toggle whether AI can reference hidden Whop products
+ */
+export const toggleAIHiddenProducts = mutation({
+  args: {
+    companyId: v.id("companies"),
+    aiIncludeHiddenProducts: v.boolean(),
+  },
+  handler: async (ctx, { companyId, aiIncludeHiddenProducts }) => {
+    await ctx.db.patch(companyId, {
+      aiIncludeHiddenProducts,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
  * Update company settings (from Settings tab)
  *
  * Allows users to update their timezone preference.

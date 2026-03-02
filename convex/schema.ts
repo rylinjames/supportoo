@@ -109,6 +109,7 @@ export default defineSchema({
 
     // Product sync settings
     excludedProductIds: v.optional(v.array(v.string())), // Whop product IDs to exclude from sync
+    aiIncludeHiddenProducts: v.optional(v.boolean()), // Allow AI to reference hidden Whop products
 
     // Metadata
     createdAt: v.number(),

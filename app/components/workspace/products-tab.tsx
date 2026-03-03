@@ -304,6 +304,8 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
             const productPlans = product.pricingOptions || [];
             // Default to true if includeInAI is not set
             const isIncludedInAI = product.includeInAI !== false;
+            const isHiddenOverride = !product.isVisible && company?.aiIncludeHiddenProducts !== true;
+            const effectiveAI = isIncludedInAI && !isHiddenOverride;
 
             return (
               <div
@@ -367,19 +369,20 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                   <div className="flex items-center gap-2">
                     <Bot className={cn(
                       "h-4 w-4",
-                      isIncludedInAI ? "text-primary" : "text-muted-foreground"
+                      effectiveAI ? "text-primary" : "text-muted-foreground"
                     )} />
                     <span className="text-xs text-muted-foreground">
                       {!isIncludedInAI
                         ? "Hidden from AI"
-                        : (!product.isVisible && company?.aiIncludeHiddenProducts !== true)
+                        : isHiddenOverride
                         ? "Hidden product — AI won't see"
                         : "AI can reference this product"}
                     </span>
                   </div>
                   <Switch
-                    checked={isIncludedInAI}
+                    checked={effectiveAI}
                     onCheckedChange={() => handleToggleAI(product._id, isIncludedInAI)}
+                    disabled={isHiddenOverride}
                     className="scale-75"
                   />
                 </div>

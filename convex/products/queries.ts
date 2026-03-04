@@ -79,7 +79,7 @@ async function buildCompanyProductCatalog(
   }, {});
 
   return products
-    .sort((a: any, b: any) => b.updatedAt - a.updatedAt)
+    .sort((a: any, b: any) => (a.title || "").localeCompare(b.title || ""))
     .map((product: any) => ({
       ...product,
       pricingOptions: (visiblePlansByProduct[product.whopProductId] || []).sort((a: CatalogPlan, b: CatalogPlan) => {

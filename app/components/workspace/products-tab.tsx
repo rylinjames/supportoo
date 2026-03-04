@@ -300,7 +300,11 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
       ) : (
         /* Products Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {products?.map((product: any) => {
+          {products?.slice().sort((a: any, b: any) => {
+            const aHidden = !a.isVisible || !a.isActive ? 1 : 0;
+            const bHidden = !b.isVisible || !b.isActive ? 1 : 0;
+            return aHidden - bHidden;
+          }).map((product: any) => {
             const productPlans = product.pricingOptions || [];
             // Default to true if includeInAI is not set
             const isIncludedInAI = product.includeInAI !== false;

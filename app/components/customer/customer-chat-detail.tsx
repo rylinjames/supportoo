@@ -215,6 +215,7 @@ export function CustomerChatDetail({
     } finally {
       setIsSending(false);
       setIsUploading(false);
+      textareaRef.current?.focus();
     }
   };
 
@@ -475,7 +476,7 @@ export function CustomerChatDetail({
               }}
               placeholder="Type a message..."
               disabled={isSending || isUploading}
-              className="w-full min-h-[40px] max-h-[120px] resize-none border-0 text-body-sm px-0 py-0 placeholder:text-body-sm placeholder:text-muted-foreground focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-default"
+              className="w-full min-h-[40px] max-h-[120px] resize-none border-0 text-[16px] px-0 py-0 placeholder:text-[14px] placeholder:text-muted-foreground focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-default"
               rows={1}
               autoComplete="off"
               autoCorrect="off"

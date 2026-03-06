@@ -325,37 +325,46 @@ async function getCompanyFromExperience(
   // METHOD 1 (AUTHORITATIVE): Use /v5/app/experiences to get the correct company
   // This endpoint returns ALL experiences for our app with their company_id
   // This is the ONLY reliable way to determine which company owns an experience
+  // NOTE: This endpoint is paginated (10 per page) so we must fetch all pages
   try {
     console.log(`[getCompanyFromExperience] Trying /v5/app/experiences for ${experienceId}...`);
-    const appExperiencesResponse = await fetch(`https://api.whop.com/api/v5/app/experiences`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'application/json',
-      }
-    });
+    let page = 1;
+    let totalPages = 1;
 
-    if (appExperiencesResponse.ok) {
+    while (page <= totalPages) {
+      const appExperiencesResponse = await fetch(`https://api.whop.com/api/v5/app/experiences?page=${page}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+        }
+      });
+
+      if (!appExperiencesResponse.ok) {
+        console.log(`[getCompanyFromExperience] /v5/app/experiences page ${page} returned ${appExperiencesResponse.status}`);
+        break;
+      }
+
       const appExperiencesData = await appExperiencesResponse.json();
       const experiences = appExperiencesData.data || [];
+      totalPages = appExperiencesData.pagination?.total_pages || 1;
+      console.log(`[getCompanyFromExperience] Page ${page}/${totalPages}, ${experiences.length} experiences`);
 
-      // Find the experience that matches our experienceId
       const matchingExperience = experiences.find((exp: any) => exp.id === experienceId);
 
       if (matchingExperience && matchingExperience.company_id) {
-        console.log(`[getCompanyFromExperience] ✅ Found company from /v5/app/experiences: ${matchingExperience.company_id}`);
-        // Fetch the actual business/store name instead of using experience name
+        console.log(`[getCompanyFromExperience] ✅ Found company from /v5/app/experiences page ${page}: ${matchingExperience.company_id}`);
         const businessName = await fetchWhopBusinessName(matchingExperience.company_id);
         return {
           whopCompanyId: matchingExperience.company_id,
           companyName: businessName || matchingExperience.name || "My Company",
         };
-      } else {
-        console.log(`[getCompanyFromExperience] Experience ${experienceId} not found in app experiences list`);
       }
-    } else {
-      console.log(`[getCompanyFromExperience] /v5/app/experiences returned ${appExperiencesResponse.status}`);
+
+      page++;
     }
+
+    console.log(`[getCompanyFromExperience] Experience ${experienceId} not found in any page of app experiences`);
   } catch (e) {
     console.log(`[getCompanyFromExperience] /v5/app/experiences failed:`, e);
   }

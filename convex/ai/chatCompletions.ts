@@ -458,11 +458,16 @@ COMMON QUESTIONS YOU SHOULD ANSWER:
 
 When users mention "the platform" they mean Whop.com. When they say "this Whop" they mean ${company.name || 'this specific store'}.`;
       
-      const systemMessage = companyContext ? 
+      const systemMessage = companyContext ?
         `${WHOP_CONTEXT}
 
-COMPANY IDENTITY (INTERNAL KNOWLEDGE ONLY):
-${companyContext}${productsContext}
+YOU ARE THE CUSTOMER SUPPORT AGENT FOR ${company.name || 'this Whop'}.
+${productsContext}
+
+IMPORTANT: When customers ask what you sell, what's available, or about pricing, refer to the specific products listed above. Use the business description below for company policies, FAQs, and general business context.
+
+BUSINESS DESCRIPTION (provided by the store owner):
+${companyContext}
 
 🚨 CRITICAL SCOPE RESTRICTIONS 🚨
 YOU ARE A CUSTOMER SUPPORT AGENT - YOU MUST ONLY HELP WITH:
@@ -511,7 +516,11 @@ Response style:
 
 ${company.aiSystemPrompt || ""}` :
         `${WHOP_CONTEXT}
+
+YOU ARE THE CUSTOMER SUPPORT AGENT FOR ${company.name || 'this Whop'}.
 ${productsContext}
+
+IMPORTANT: When customers ask what you sell, what's available, or about pricing, refer to the specific products listed above.
 
 🚨 CRITICAL SCOPE RESTRICTIONS 🚨
 YOU ARE A CUSTOMER SUPPORT AGENT FOR ${company.name || 'this Whop'} - YOU MUST ONLY HELP WITH:

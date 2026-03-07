@@ -149,8 +149,9 @@ export const directActivatePlan = mutation({
     companyId: v.id("companies"),
     planName: v.union(v.literal("pro"), v.literal("elite")),
     receiptId: v.optional(v.string()),
+    whopMembershipId: v.optional(v.string()),
   },
-  handler: async (ctx, { companyId, planName, receiptId }) => {
+  handler: async (ctx, { companyId, planName, receiptId, whopMembershipId }) => {
     const company = await ctx.db.get(companyId);
     if (!company) {
       throw new Error("Company not found");
@@ -184,6 +185,9 @@ export const directActivatePlan = mutation({
       currentPeriodStart: now,
       currentPeriodEnd: periodEnd,
 
+      // Store membership ID so cancellation webhook can find this company
+      ...(whopMembershipId && { whopMembershipId }),
+
       // Reset usage for new billing cycle
       aiResponsesThisMonth: 0,
       aiResponsesResetAt: periodEnd,
@@ -194,7 +198,7 @@ export const directActivatePlan = mutation({
       scheduledPlanId: undefined,
     });
 
-    console.log(`  ✅ Plan activated: ${planName} (receipt: ${receiptId || "none"})`);
+    console.log(`  ✅ Plan activated: ${planName} (receipt: ${receiptId || "none"}, membership: ${whopMembershipId || "none"})`);
 
     return { success: true, alreadyActive: false };
   },

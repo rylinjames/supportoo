@@ -1190,6 +1190,17 @@ export const onboardUser = action({
       //   }
       // }
 
+      // Verify company's membership is still valid (catches missed cancellation webhooks).
+      // Uses the specific whopMembershipId stored on the company, NOT user-level checkAccess,
+      // so it's scoped to this whop only and won't leak across companies.
+      try {
+        await ctx.runAction(api.billing.actions.verifyCompanyMembership, {
+          companyId: company._id,
+        });
+      } catch (e) {
+        console.error(`[onboardUser] Membership verification failed (non-fatal):`, e);
+      }
+
       // Setup complete - redirect to appropriate screen
       const redirectTo =
         role === "customer"

@@ -117,6 +117,7 @@ export default defineSchema({
   })
     .index("by_whop_company_id", ["whopCompanyId"])
     .index("by_whop_experience_id", ["whopExperienceId"])
+    .index("by_whop_membership_id", ["whopMembershipId"])
     .index("by_plan", ["planId"])
     .index("by_billing_status", ["billingStatus"]),
 

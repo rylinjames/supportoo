@@ -18,6 +18,8 @@ import {
   Users,
   Menu,
   X,
+  CreditCard,
+  Settings,
 } from "lucide-react";
 import { Separator } from "../../../components/ui/separator";
 import { UserSection } from "./user-section";
@@ -226,12 +228,24 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
       ],
     };
 
+    const accountSection: NavSection = {
+      id: "account",
+      label: "Account",
+      defaultExpanded: false,
+      items: [
+        ...(effectiveUserType === "admin"
+          ? [{ id: "billing", icon: CreditCard, label: "Billing", route: "/billing" }]
+          : []),
+        { id: "settings", icon: Settings, label: "Settings", route: "/settings" },
+      ],
+    };
+
     if (effectiveUserType === "admin") {
-      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection];
+      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection, accountSection];
     }
 
     if (effectiveUserType === "manager") {
-      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection];
+      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection, accountSection];
     }
 
     if (effectiveUserType === "viewer") {

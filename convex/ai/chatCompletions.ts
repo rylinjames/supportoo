@@ -351,7 +351,7 @@ export const generateChatResponse = action({
 
         productsContext = `\n\nCOMPANY PRODUCTS & SERVICES:
 ${products.map((product: any) => {
-  let productInfo = `• ${product.title}`;
+  let productInfo = `• Product Name: ${product.title}`;
 
   const productPlans = product.pricingOptions || [];
 

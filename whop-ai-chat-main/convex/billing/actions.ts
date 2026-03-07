@@ -167,14 +167,16 @@ export const activatePlanAfterPayment = action({
     targetPlanName: v.union(v.literal("pro"), v.literal("elite")),
     whopUserId: v.string(),
     receiptId: v.optional(v.string()),
+    whopMembershipId: v.optional(v.string()),
   },
   handler: async (
     ctx,
-    { companyId, targetPlanName, whopUserId, receiptId }
+    { companyId, targetPlanName, whopUserId, receiptId, whopMembershipId }
   ): Promise<{ success: boolean; message: string }> => {
     console.log(`🚀 Direct plan activation: ${targetPlanName}`);
     console.log(`  Company: ${companyId}`);
     console.log(`  Receipt: ${receiptId || "none"}`);
+    console.log(`  Membership: ${whopMembershipId || "none"}`);
 
     // 1. Verify user is admin
     const user = await ctx.runQuery(api.users.queries.getUserByWhopUserId, {
@@ -201,6 +203,7 @@ export const activatePlanAfterPayment = action({
         companyId,
         planName: targetPlanName,
         receiptId,
+        whopMembershipId,
       }
     );
 
@@ -300,6 +303,97 @@ export const cancelMembership = action({
       throw new Error(
         `Failed to cancel membership: ${error instanceof Error ? error.message : "Unknown error"}`
       );
+    }
+  },
+});
+
+/**
+ * Verify a company's Whop membership is still valid.
+ *
+ * Called on login/session to catch cases where the cancellation webhook
+ * was missed. Checks the specific membership stored on the company
+ * (not user-level access, which would leak across whops).
+ */
+export const verifyCompanyMembership = action({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }): Promise<{ valid: boolean }> => {
+    const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
+      companyId,
+    });
+
+    if (!company) {
+      return { valid: false };
+    }
+
+    // Only check companies on paid plans with a membership ID
+    const plan = await ctx.runQuery(api.plans.queries.getPlanById, {
+      planId: company.planId,
+    });
+
+    if (!plan || plan.name === "free" || !company.whopMembershipId) {
+      return { valid: true }; // Free plans or no membership to verify
+    }
+
+    // If there's already a scheduled downgrade, skip the check
+    if (company.scheduledPlanChangeAt) {
+      return { valid: true };
+    }
+
+    try {
+      const whop = getWhopInstance();
+      const membership = await whop.memberships.retrieve(company.whopMembershipId);
+
+      // Check if membership is still active
+      const isValid = membership.status === "active" || membership.status === "trialing";
+      const isCancelling = membership.cancel_at_period_end === true;
+
+      console.log(`[verifyMembership] Company ${company.name}: membership ${company.whopMembershipId} status=${membership.status}, cancel_at_period_end=${membership.cancel_at_period_end}`);
+
+      if (!isValid) {
+        // Membership is no longer active — downgrade immediately
+        console.log(`[verifyMembership] Membership invalid, downgrading ${company.name} to free`);
+        const freePlan = await ctx.runQuery(api.plans.queries.getPlanByName, {
+          name: "free",
+        });
+
+        if (freePlan) {
+          await ctx.runMutation(api.billing.mutations.schedulePlanDowngrade, {
+            companyId: company._id,
+            scheduledPlanId: freePlan._id,
+            scheduledFor: Date.now(), // Immediate — membership already invalid
+          });
+        }
+
+        return { valid: false };
+      }
+
+      if (isCancelling && !company.scheduledPlanChangeAt) {
+        // Membership is cancelling but we missed the webhook — schedule downgrade
+        console.log(`[verifyMembership] Membership cancelling, scheduling downgrade for ${company.name}`);
+        const freePlan = await ctx.runQuery(api.plans.queries.getPlanByName, {
+          name: "free",
+        });
+
+        if (freePlan) {
+          const scheduledFor = membership.renewal_period_end
+            ? Number(membership.renewal_period_end) * 1000
+            : company.currentPeriodEnd;
+
+          await ctx.runMutation(api.billing.mutations.schedulePlanDowngrade, {
+            companyId: company._id,
+            scheduledPlanId: freePlan._id,
+            scheduledFor,
+          });
+        }
+      }
+
+      return { valid: true };
+    } catch (error) {
+      // Don't fail the login if membership check fails
+      console.error(`[verifyMembership] Failed to verify membership for ${company.name}:`, error);
+      return { valid: true };
     }
   },
 });

@@ -109,6 +109,7 @@ export default defineSchema({
 
     // Product sync settings
     excludedProductIds: v.optional(v.array(v.string())), // Whop product IDs to exclude from sync
+    aiIncludeHiddenProducts: v.optional(v.boolean()), // Whether AI can reference hidden products
 
     // Metadata
     createdAt: v.number(),
@@ -116,6 +117,7 @@ export default defineSchema({
   })
     .index("by_whop_company_id", ["whopCompanyId"])
     .index("by_whop_experience_id", ["whopExperienceId"])
+    .index("by_whop_membership_id", ["whopMembershipId"])
     .index("by_plan", ["planId"])
     .index("by_billing_status", ["billingStatus"]),
 

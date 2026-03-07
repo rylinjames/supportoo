@@ -25,6 +25,24 @@ export const getCompanyByWhopId = query({
 });
 
 // ============================================================================
+// GET COMPANY BY WHOP MEMBERSHIP ID
+// ============================================================================
+
+export const getCompanyByMembershipId = query({
+  args: {
+    whopMembershipId: v.string(),
+  },
+  handler: async (ctx, { whopMembershipId }) => {
+    return await ctx.db
+      .query("companies")
+      .withIndex("by_whop_membership_id", (q) =>
+        q.eq("whopMembershipId", whopMembershipId)
+      )
+      .first();
+  },
+});
+
+// ============================================================================
 // GET COMPANY BY EXPERIENCE ID
 // ============================================================================
 

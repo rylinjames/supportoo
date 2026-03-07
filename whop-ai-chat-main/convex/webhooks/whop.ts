@@ -333,18 +333,34 @@ export const handleMembershipCancelled = action({
     console.log("  - Membership ID:", membershipId);
     console.log("  - Company ID:", whopCompanyId);
 
-    // Step 1: Find company by whopCompanyId
-    const company = await ctx.runQuery(
-      api.companies.queries.getCompanyByWhopId,
-      { whopCompanyId }
-    );
+    // Step 1: Find company by whopMembershipId first (most precise - scoped to exact purchase)
+    // Fall back to whopCompanyId if membership lookup fails
+    let company = null;
 
-    if (!company) {
-      console.error("❌ No company found for Whop company ID:", whopCompanyId);
-      throw new Error(`Company not found for whopCompanyId: ${whopCompanyId}`);
+    if (membershipId) {
+      company = await ctx.runQuery(
+        api.companies.queries.getCompanyByMembershipId,
+        { whopMembershipId: membershipId }
+      );
+      if (company) {
+        console.log("  ✅ Found company by membership ID:", company.name);
+      }
     }
 
-    console.log("  ✅ Found company:", company.name);
+    if (!company && whopCompanyId) {
+      company = await ctx.runQuery(
+        api.companies.queries.getCompanyByWhopId,
+        { whopCompanyId }
+      );
+      if (company) {
+        console.log("  ⚠️ Found company by whopCompanyId fallback:", company.name);
+      }
+    }
+
+    if (!company) {
+      console.error("❌ No company found for membership:", membershipId, "or whopCompanyId:", whopCompanyId);
+      throw new Error(`Company not found for membershipId: ${membershipId}, whopCompanyId: ${whopCompanyId}`);
+    }
 
     // Step 2: Get free plan
     const freePlan = await ctx.runQuery(api.plans.queries.getPlanByName, {

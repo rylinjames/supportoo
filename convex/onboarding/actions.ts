@@ -144,9 +144,11 @@ async function detectAndAssignPlan(
       }
     }
 
+    // If no access to any tier, downgrade to free
     if (!highestTier || highestLevel === 0) {
-      console.log(`[detectAndAssignPlan] No access to any Ticketoo tier products, keeping current plan`);
-      return;
+      highestTier = "free";
+      highestLevel = 0;
+      console.log(`[detectAndAssignPlan] No access to any Ticketoo tier products, will sync to free`);
     }
 
     console.log(`[detectAndAssignPlan] Detected tier: ${highestTier} (admin=${isAdmin})`);
@@ -162,7 +164,6 @@ async function detectAndAssignPlan(
     const company = await ctx.runQuery(api.companies.queries.getCompanyById, { companyId });
     if (!company) return;
 
-    // Only upgrade, never downgrade via auto-detection
     const currentPlan = await ctx.runQuery(api.plans.queries.getPlanById, {
       planId: company.planId,
     });
@@ -175,8 +176,15 @@ async function detectAndAssignPlan(
         resetUsage: true,
       });
       console.log(`[detectAndAssignPlan] Upgraded from ${currentPlan?.name || "unknown"} to ${highestTier}`);
+    } else if (highestLevel < currentLevel) {
+      await ctx.runMutation(api.companies.mutations.updatePlan, {
+        companyId,
+        planId: targetPlan._id,
+        resetUsage: false,
+      });
+      console.log(`[detectAndAssignPlan] Downgraded from ${currentPlan?.name || "unknown"} to ${highestTier} (lost access)`);
     } else {
-      console.log(`[detectAndAssignPlan] Already on ${currentPlan?.name || "unknown"}, no upgrade needed`);
+      console.log(`[detectAndAssignPlan] Already on ${currentPlan?.name || "unknown"}, no change needed`);
     }
   } catch (error) {
     // Don't fail onboarding if tier detection fails

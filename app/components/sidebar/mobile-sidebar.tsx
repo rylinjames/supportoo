@@ -231,7 +231,7 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
     const accountSection: NavSection = {
       id: "account",
       label: "Account",
-      defaultExpanded: false,
+      defaultExpanded: true,
       items: [
         ...(effectiveUserType === "admin"
           ? [{ id: "billing", icon: CreditCard, label: "Billing", route: "/billing" }]

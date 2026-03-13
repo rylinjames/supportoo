@@ -34,6 +34,7 @@ import type * as internalNotes from "../internalNotes.js";
 import type * as lib_whop from "../lib/whop.js";
 import type * as messages_mutations from "../messages/mutations.js";
 import type * as messages_queries from "../messages/queries.js";
+import type * as migrations_addHasDepartments from "../migrations/addHasDepartments.js";
 import type * as notifications_whop from "../notifications/whop.js";
 import type * as onboarding_actions from "../onboarding/actions.js";
 import type * as plans_migrations from "../plans/migrations.js";
@@ -110,6 +111,7 @@ declare const fullApi: ApiFromModules<{
   "lib/whop": typeof lib_whop;
   "messages/mutations": typeof messages_mutations;
   "messages/queries": typeof messages_queries;
+  "migrations/addHasDepartments": typeof migrations_addHasDepartments;
   "notifications/whop": typeof notifications_whop;
   "onboarding/actions": typeof onboarding_actions;
   "plans/migrations": typeof plans_migrations;

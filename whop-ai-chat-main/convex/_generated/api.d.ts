@@ -28,6 +28,8 @@ import type * as conversations_export from "../conversations/export.js";
 import type * as conversations_mutations from "../conversations/mutations.js";
 import type * as conversations_queries from "../conversations/queries.js";
 import type * as crons from "../crons.js";
+import type * as departments_mutations from "../departments/mutations.js";
+import type * as departments_queries from "../departments/queries.js";
 import type * as internalNotes from "../internalNotes.js";
 import type * as lib_whop from "../lib/whop.js";
 import type * as messages_mutations from "../messages/mutations.js";
@@ -102,6 +104,8 @@ declare const fullApi: ApiFromModules<{
   "conversations/mutations": typeof conversations_mutations;
   "conversations/queries": typeof conversations_queries;
   crons: typeof crons;
+  "departments/mutations": typeof departments_mutations;
+  "departments/queries": typeof departments_queries;
   internalNotes: typeof internalNotes;
   "lib/whop": typeof lib_whop;
   "messages/mutations": typeof messages_mutations;

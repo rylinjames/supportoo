@@ -246,12 +246,12 @@ export const sendHandoffRequestNotification = action({
   args: {
     conversationId: v.id("conversations"),
     reason: v.string(),
+    departmentId: v.optional(v.id("departments")),
   },
-  handler: async (ctx, { conversationId, reason }) => {
+  handler: async (ctx, { conversationId, reason, departmentId }) => {
     const whopSdk = getWhopSdk();
 
     try {
-      // Get conversation details
       const conversation = await ctx.runQuery(
         api.conversations.queries.getConversation,
         { conversationId }
@@ -261,7 +261,6 @@ export const sendHandoffRequestNotification = action({
         return { success: false };
       }
 
-      // Get company to find experienceId
       const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId: conversation.companyId,
       });
@@ -270,16 +269,35 @@ export const sendHandoffRequestNotification = action({
         return { success: false };
       }
 
-      // Get support agents
+      let departmentName: string | undefined;
+
+      // Get support agents -- filter by department if provided
       const supportAgents = await ctx.runQuery(
         api.users.queries.listTeamMembersByCompany,
         { companyId: conversation.companyId }
       );
 
-      const agentWhopUserIds = supportAgents
-        .filter(
-          (agent: any) => agent.role === "support" || agent.role === "admin"
-        )
+      let eligibleAgents = supportAgents.filter(
+        (agent: any) => agent.role === "support" || agent.role === "admin"
+      );
+
+      if (departmentId) {
+        const dept = await ctx.runQuery(api.departments.queries.getDepartment, {
+          departmentId,
+        });
+        departmentName = dept?.name;
+
+        const deptAgents = eligibleAgents.filter(
+          (agent: any) => agent.departmentIds?.includes(departmentId)
+        );
+
+        // Fall back to all agents if no one is assigned to this department
+        if (deptAgents.length > 0) {
+          eligibleAgents = deptAgents;
+        }
+      }
+
+      const agentWhopUserIds = eligibleAgents
         .map((agent: any) => agent.whopUserId)
         .filter(Boolean);
 
@@ -288,15 +306,17 @@ export const sendHandoffRequestNotification = action({
         return { success: true };
       }
 
-      // Get customer name
       const customer = await ctx.runQuery(api.users.queries.getUserById, {
         userId: conversation.customerId,
       });
       const customerName = customer?.displayName || "A customer";
 
-      // Send notification
+      const title = departmentName
+        ? `[${departmentName}] Customer needs help`
+        : "Customer needs help";
+
       await whopSdk.notifications.sendPushNotification({
-        title: "Customer needs help",
+        title,
         content: `${customerName}: ${reason}`,
         userIds: agentWhopUserIds,
         experienceId: company.whopExperienceId,

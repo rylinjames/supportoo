@@ -216,6 +216,7 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
       items: [
         { id: "templates", icon: FileText, label: "Templates", route: "/workspace" },
         { id: "team", icon: Users, label: "Team", route: "/workspace?tab=team" },
+        { id: "departments", icon: Building2, label: "Departments", route: "/workspace?tab=departments" },
       ],
     };
 

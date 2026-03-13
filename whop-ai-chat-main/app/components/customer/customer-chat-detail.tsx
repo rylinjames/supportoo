@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Send, Paperclip, Loader2, X } from "lucide-react";
+import { Send, Paperclip, Loader2, X, Building2 } from "lucide-react";
 import {
   MessageBubble,
   type Message as MessageBubbleMessage,
@@ -42,6 +42,8 @@ interface Message {
   attachmentType?: string;
   systemMessageType?:
     | "handoff"
+    | "department_prompt"
+    | "department_selected"
     | "agent_joined"
     | "agent_left"
     | "issue_resolved";
@@ -76,6 +78,7 @@ export function CustomerChatDetail({
 
   const sendMessage = useMutation(api.messages.mutations.sendCustomerMessage);
   const uploadFile = useAction(api.uploadthing.actions.uploadFile);
+  const selectDepartment = useMutation(api.departments.mutations.selectDepartmentForConversation);
   const updatePresence = useMutation(api.presence.mutations.updatePresence);
   const heartbeat = useMutation(api.presence.mutations.heartbeat);
   const markAsRead = useMutation(
@@ -111,6 +114,26 @@ export function CustomerChatDetail({
         }
       : "skip"
   );
+
+  const isAwaitingDepartment = conversation.status === "awaiting_department";
+
+  const activeDepartments = useQuery(
+    api.departments.queries.listActiveDepartments,
+    isAwaitingDepartment
+      ? { companyId: conversation.companyId as Id<"companies"> }
+      : "skip"
+  );
+
+  const handleSelectDepartment = async (departmentId: string) => {
+    try {
+      await selectDepartment({
+        conversationId: conversation._id as Id<"conversations">,
+        departmentId: departmentId as Id<"departments">,
+      });
+    } catch (error) {
+      toast.error("Failed to select department");
+    }
+  };
 
   const isAITyping = conversation.aiProcessing || false;
   const isAgentTyping = typingUsers?.some((u: any) => u.userRole === "support");
@@ -452,6 +475,36 @@ export function CustomerChatDetail({
               {isAgentTyping && (
                 <TypingIndicator type="agent" viewType="customer" />
               )}
+
+              {/* Department Selection Buttons */}
+              {isAwaitingDepartment && activeDepartments && activeDepartments.length > 0 && (
+                <div className="my-4 space-y-2">
+                  <div className="grid gap-2">
+                    {activeDepartments.map((dept: any) => (
+                      <button
+                        key={dept._id}
+                        onClick={() => handleSelectDepartment(dept._id)}
+                        className="flex items-center gap-3 w-full p-3 rounded-lg border border-border bg-card hover:bg-primary/5 hover:border-primary/30 transition-all text-left group"
+                      >
+                        <div className="p-1.5 rounded-md bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                          <Building2 className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-foreground block">
+                            {dept.name}
+                          </span>
+                          {dept.description && (
+                            <span className="text-xs text-muted-foreground block truncate">
+                              {dept.description}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </>
           ) : (
@@ -473,8 +526,8 @@ export function CustomerChatDetail({
                   handleSendMessage();
                 }
               }}
-              placeholder="Type a message..."
-              disabled={isSending || isUploading}
+              placeholder={isAwaitingDepartment ? "Please select a department above..." : "Type a message..."}
+              disabled={isSending || isUploading || isAwaitingDepartment}
               className="w-full min-h-[40px] max-h-[120px] resize-none border-0 text-body-sm px-0 py-0 placeholder:text-body-sm placeholder:text-muted-foreground focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-default"
               rows={1}
               autoComplete="off"

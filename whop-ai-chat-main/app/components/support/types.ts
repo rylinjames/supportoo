@@ -6,7 +6,7 @@
 
 import type { Doc } from "@/convex/_generated/dataModel";
 
-export type ConversationStatus = "ai" | "available" | "support" | "resolved";
+export type ConversationStatus = "ai" | "awaiting_department" | "available" | "support" | "resolved";
 export type DeliveryStatus = "sent" | "delivered" | "seen";
 
 export interface Agent {
@@ -33,6 +33,7 @@ export interface Conversation {
   unread: boolean;
   participatingAgents: Agent[];
   handoffReason?: string;
+  departmentName?: string;
   createdAt: Date;
   messages?: Doc<"messages">[]; // Pre-fetched messages for instant display
 }

@@ -162,6 +162,7 @@ export const getFullCompanyConfig = query({
         hasInsights: plan.hasInsights,
         hasCustomTriggers: plan.hasCustomTriggers,
         hasFileAttachments: plan.hasFileAttachments,
+        hasDepartments: plan.hasDepartments,
       },
 
       // AI Configuration
@@ -184,6 +185,9 @@ export const getFullCompanyConfig = query({
       billingStatus: company.billingStatus,
       scheduledPlanChangeAt: company.scheduledPlanChangeAt,
       scheduledPlanId: company.scheduledPlanId,
+
+      // Departments
+      departmentsEnabled: company.departmentsEnabled ?? false,
 
       // Status
       onboardingCompleted: company.onboardingCompleted,

@@ -23,6 +23,7 @@ interface ConversationListProps {
 const STATUS_FILTERS: { value: ConversationStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "available", label: "Available" },
+  { value: "awaiting_department", label: "Pending" },
   { value: "ai", label: "AI" },
   { value: "support", label: "Support" },
   { value: "resolved", label: "Resolved" },
@@ -76,12 +77,12 @@ export function ConversationList({
     return filtered;
   }, [conversations, searchQuery, statusFilter, sortBy]);
 
-  // Separate available conversations
+  // Separate conversations needing attention (available + awaiting_department)
   const availableConversations = filteredConversations.filter(
-    (c) => c.status === "available"
+    (c) => c.status === "available" || c.status === "awaiting_department"
   );
   const otherConversations = filteredConversations.filter(
-    (c) => c.status !== "available"
+    (c) => c.status !== "available" && c.status !== "awaiting_department"
   );
 
   const availableCount = availableConversations.length;

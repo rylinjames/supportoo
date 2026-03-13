@@ -98,6 +98,7 @@ export const listConversationsForAgents = query({
     status: v.optional(
       v.union(
         v.literal("ai_handling"),
+        v.literal("awaiting_department"),
         v.literal("available"),
         v.literal("support_staff_handling")
       )
@@ -260,6 +261,11 @@ export const listConversationsForAgents = query({
           }
         }
 
+        // Resolve department name if assigned
+        const department = conversation.departmentId
+          ? await ctx.db.get(conversation.departmentId)
+          : null;
+
         return {
           ...conversation,
           customer: customer
@@ -279,6 +285,7 @@ export const listConversationsForAgents = query({
           deliveryStatus,
           participatingAgentsEnriched,
           handoffReason: conversation.handoffReason,
+          departmentName: department?.name || null,
         };
       })
     );
@@ -463,8 +470,9 @@ export const getConversationCountByStatus = query({
       .withIndex("by_company_updated", (q) => q.eq("companyId", companyId))
       .collect();
 
-    const counts = {
+    const counts: Record<string, number> = {
       ai_handling: 0,
+      awaiting_department: 0,
       available: 0,
       support_staff_handling: 0,
       resolved: 0,
@@ -472,7 +480,9 @@ export const getConversationCountByStatus = query({
     };
 
     for (const conversation of allConversations) {
-      counts[conversation.status]++;
+      if (counts[conversation.status] !== undefined) {
+        counts[conversation.status]++;
+      }
     }
 
     return counts;

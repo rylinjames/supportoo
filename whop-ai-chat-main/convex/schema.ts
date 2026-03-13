@@ -32,6 +32,7 @@ export default defineSchema({
     hasPrioritySupport: v.boolean(),
     hasCustomTriggers: v.boolean(),
     hasFileAttachments: v.boolean(),
+    hasDepartments: v.optional(v.boolean()),
 
     // Limits
     maxAgents: v.number(),
@@ -102,6 +103,9 @@ export default defineSchema({
     openaiVectorStoreId: v.optional(v.string()), // Vector Store ID for company knowledge base
     openaiContextFileId: v.optional(v.string()), // Current context file ID in Vector Store
     testAssistantId: v.optional(v.string()), // Cached test assistant ID (for AI Studio testing)
+
+    // Departments
+    departmentsEnabled: v.optional(v.boolean()),
 
     // Onboarding status
     onboardingCompleted: v.boolean(),
@@ -186,6 +190,9 @@ export default defineSchema({
       v.literal("customer")    // Can only view their own tickets
     ),
 
+    // Department assignments (agent can belong to multiple departments)
+    departmentIds: v.optional(v.array(v.id("departments"))),
+
     // Timestamps
     joinedAt: v.number(), // When user joined this company
     lastActiveInCompany: v.number(), // Last time user was active in this company
@@ -211,10 +218,12 @@ export default defineSchema({
     // Status & flow
     status: v.union(
       v.literal("ai_handling"),
+      v.literal("awaiting_department"),
       v.literal("available"),
       v.literal("support_staff_handling"),
       v.literal("resolved")
     ),
+    departmentId: v.optional(v.id("departments")),
     handoffTriggeredAt: v.optional(v.number()),
     handoffReason: v.optional(v.string()), // e.g., "User requested support staff", "Billing question"
 
@@ -299,6 +308,8 @@ export default defineSchema({
     systemMessageType: v.optional(
       v.union(
         v.literal("handoff"),
+        v.literal("department_prompt"),
+        v.literal("department_selected"),
         v.literal("agent_joined"),
         v.literal("agent_left"),
         v.literal("issue_resolved")
@@ -724,4 +735,20 @@ export default defineSchema({
     .index("by_company_whop_plan", ["companyId", "whopPlanId"])
     .index("by_company_visible", ["companyId", "isVisible"])
     .index("by_company_tier", ["companyId", "planTier"]),
+
+  // ============================================================================
+  // DEPARTMENTS - Routing categories for handoff
+  // ============================================================================
+  departments: defineTable({
+    companyId: v.id("companies"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    isActive: v.boolean(),
+    isDefault: v.optional(v.boolean()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_company", ["companyId"])
+    .index("by_company_active", ["companyId", "isActive"]),
 });

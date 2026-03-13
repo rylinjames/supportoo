@@ -94,6 +94,8 @@ interface Message {
   attachmentType?: string;
   systemMessageType?:
     | "handoff"
+    | "department_prompt"
+    | "department_selected"
     | "agent_joined"
     | "agent_left"
     | "issue_resolved";

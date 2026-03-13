@@ -46,7 +46,7 @@ type BackendConversation = {
     initials: string;
     avatar?: string;
   } | null>;
-  departmentName?: string;
+  departmentName?: string | null;
   messages?: Doc<"messages">[]; // Pre-fetched messages for instant display
 };
 

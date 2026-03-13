@@ -63,6 +63,13 @@ export interface Message {
   attachment?: FileAttachment; // Optional file attachment
   readByCustomerAt?: number; // For read receipts
   readByAgentAt?: number; // For read receipts
+  systemMessageType?:
+    | "handoff"
+    | "department_prompt"
+    | "department_selected"
+    | "agent_joined"
+    | "agent_left"
+    | "issue_resolved";
 }
 
 interface MessageBubbleProps {

@@ -493,6 +493,26 @@ export const supportTakeover = mutation({
 
     await ctx.db.patch(conversationId, updates);
 
+    // Notify customer that an agent has joined
+    if (!isAlreadyParticipating) {
+      const customer = await ctx.db.get(conversation.customerId);
+      if (customer?.notificationsEnabled && customer.whopUserId) {
+        const company = await ctx.db.get(conversation.companyId);
+        if (company?.whopExperienceId) {
+          await ctx.scheduler.runAfter(
+            0,
+            api.notifications.whop.sendHandoffNotification,
+            {
+              customerWhopUserId: customer.whopUserId,
+              agentName: agent.displayName,
+              conversationId,
+              experienceId: company.whopExperienceId,
+            }
+          );
+        }
+      }
+    }
+
     return { success: true, joinedAt: now };
   },
 });
@@ -562,6 +582,23 @@ export const markIssueResolved = mutation({
       status: "resolved",
       updatedAt: now,
     });
+
+    // Notify customer that issue is resolved
+    const customer = await ctx.db.get(conversation.customerId);
+    if (customer?.notificationsEnabled && customer.whopUserId) {
+      const company = await ctx.db.get(conversation.companyId);
+      if (company?.whopExperienceId) {
+        await ctx.scheduler.runAfter(
+          0,
+          api.notifications.whop.sendResolutionNotification,
+          {
+            customerWhopUserId: customer.whopUserId,
+            conversationId,
+            experienceId: company.whopExperienceId,
+          }
+        );
+      }
+    }
 
     return { success: true, resolvedAt: now };
   },

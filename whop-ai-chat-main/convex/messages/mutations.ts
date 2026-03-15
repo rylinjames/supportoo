@@ -246,6 +246,34 @@ export const sendCustomerMessage = mutation({
       lastActiveAt: now,
     });
 
+    // Notify participating agents when customer sends a message during support
+    if (conversation.status === "support_staff_handling" && conversation.participatingAgents.length > 0) {
+      const company = await ctx.db.get(conversation.companyId);
+      const customer = await ctx.db.get(conversation.customerId);
+      if (company?.whopExperienceId && customer) {
+        const agentWhopUserIds: string[] = [];
+        for (const agentId of conversation.participatingAgents) {
+          const agent = await ctx.db.get(agentId);
+          if (agent?.notificationsEnabled && agent.whopUserId) {
+            agentWhopUserIds.push(agent.whopUserId);
+          }
+        }
+        if (agentWhopUserIds.length > 0) {
+          await ctx.scheduler.runAfter(
+            0,
+            api.notifications.whop.notifySupportAgents,
+            {
+              agentWhopUserIds,
+              title: `New message from ${customer.displayName || "Customer"}`,
+              content: args.content.slice(0, 100),
+              experienceId: company.whopExperienceId,
+              restPath: `/experiences/${company.whopExperienceId}/dashboard/support?conversation=${args.conversationId}`,
+            }
+          );
+        }
+      }
+    }
+
     // ⭐ AUTO-TRIGGER AI RESPONSE WITH 1s DEBOUNCE
     if (conversation.status === "ai_handling" && !conversation.aiProcessing) {
       // Cancel any pending AI trigger from previous messages
@@ -418,6 +446,25 @@ export const sendAgentMessage = mutation({
         content: args.content,
         agentName: agent.displayName,
       });
+    }
+
+    // Notify the customer about the new agent message
+    const customer = await ctx.db.get(conversation.customerId);
+    if (customer?.notificationsEnabled && customer.whopUserId) {
+      const company = await ctx.db.get(conversation.companyId);
+      if (company?.whopExperienceId) {
+        await ctx.scheduler.runAfter(
+          0,
+          api.notifications.whop.sendNewMessageNotification,
+          {
+            customerWhopUserId: customer.whopUserId,
+            senderName: agent.displayName,
+            messagePreview: args.content,
+            conversationId: args.conversationId,
+            experienceId: company.whopExperienceId,
+          }
+        );
+      }
     }
 
       // Release lock before returning

@@ -8,189 +8,9 @@
 
 import { action } from "../_generated/server";
 import { v } from "convex/values";
-import { type OurAppRole, getWhopSdk, getWhopInstance, fetchWhopUserInfo, getWhopConfig } from "../lib/whop";
+import { type OurAppRole, getWhopSdk, getWhopInstance, fetchWhopUserInfo } from "../lib/whop";
 import { api } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
-
-/**
- * Detect and assign the correct subscription plan using Whop's checkAccess API.
- *
- * Implements the "Calloo model" — subscriptions tied to products:
- * 1. Fetch all app products, identify Ticketoo tier products by name
- * 2. For each tier product, call checkAccess(productId, userId) to see if user has access
- * 3. App developers get access_level "admin" → always elite
- * 4. Customers who purchased a tier get access_level "customer" → that tier
- * 5. Fallback: product.company_id match (legacy) → elite
- * 6. No access to any tier products → keep current plan
- *
- * This works for ALL cases: app developer on any company, paying customers, free users.
- */
-async function detectAndAssignPlan(
-  ctx: any,
-  companyId: Id<"companies">,
-  whopCompanyId: string,
-  whopUserId: string
-): Promise<void> {
-  try {
-    const { apiKey } = getWhopConfig();
-    const whop = getWhopInstance();
-    const tierHierarchy: Record<string, number> = { free: 0, pro: 1, elite: 2 };
-
-    console.log(`[detectAndAssignPlan] Detecting tier for company ${whopCompanyId}, user ${whopUserId}`);
-
-    // Fetch all app products (paginated)
-    let allProducts: any[] = [];
-    let page = 1;
-    const maxPages = 5;
-
-    while (page <= maxPages) {
-      const res = await fetch(
-        `https://api.whop.com/api/v5/app/products?page=${page}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            Accept: "application/json",
-          },
-          signal: AbortSignal.timeout(10000),
-        }
-      );
-
-      if (!res.ok) {
-        console.error(`[detectAndAssignPlan] Products API returned ${res.status}`);
-        return;
-      }
-
-      const data = await res.json();
-      allProducts = allProducts.concat(data.data || []);
-
-      if (!data.pagination?.next_page) break;
-      page = data.pagination.next_page;
-    }
-
-    console.log(`[detectAndAssignPlan] Fetched ${allProducts.length} app products`);
-
-    // Build product-to-tier map from Ticketoo product names
-    const productTierMap: Record<string, string> = {};
-    for (const product of allProducts) {
-      const name = (product.name || "").toLowerCase();
-      if (name.includes("ticketoo professional")) {
-        productTierMap[product.id] = "elite";
-      } else if (name.includes("ticketoo starter")) {
-        productTierMap[product.id] = "pro";
-      } else if (name.includes("ticketoo free")) {
-        productTierMap[product.id] = "free";
-      }
-    }
-
-    const tierProductIds = Object.keys(productTierMap);
-    console.log(`[detectAndAssignPlan] Found ${tierProductIds.length} Ticketoo tier products`);
-
-    if (tierProductIds.length === 0) {
-      console.log(`[detectAndAssignPlan] No Ticketoo tier products found, skipping`);
-      return;
-    }
-
-    // Use Whop's checkAccess API (Calloo model) to see which products this user has access to.
-    // This works for both app developers (access_level: "admin") and
-    // customers who purchased a tier (access_level: "customer").
-    // Check from highest tier down so we can stop early.
-    const sortedProducts = tierProductIds.sort(
-      (a, b) => (tierHierarchy[productTierMap[b]] || 0) - (tierHierarchy[productTierMap[a]] || 0)
-    );
-
-    let highestTier: string | null = null;
-    let highestLevel = 0;
-    let isAdmin = false;
-
-    for (const productId of sortedProducts) {
-      try {
-        const accessResult = await whop.users.checkAccess(productId, { id: whopUserId });
-        const tier = productTierMap[productId];
-        console.log(`[detectAndAssignPlan] checkAccess(${productId}) → has_access=${accessResult.has_access}, level=${accessResult.access_level}, tier=${tier}`);
-
-        if (accessResult.has_access) {
-          const tierLevel = tierHierarchy[tier] || 0;
-          if (tierLevel > highestLevel) {
-            highestLevel = tierLevel;
-            highestTier = tier;
-          }
-          if (accessResult.access_level === "admin") {
-            isAdmin = true;
-          }
-        }
-      } catch (accessError) {
-        console.error(`[detectAndAssignPlan] checkAccess failed for ${productId}:`, accessError);
-      }
-    }
-
-    // App developers (admin access) always get elite, even if no specific tier product matched
-    if (isAdmin && highestLevel < tierHierarchy["elite"]) {
-      highestTier = "elite";
-      highestLevel = tierHierarchy["elite"];
-      console.log(`[detectAndAssignPlan] User is admin (app developer) → forcing elite tier`);
-    }
-
-    // Fallback: also check product.company_id match (covers edge cases where
-    // checkAccess may not return admin for the developer's other companies)
-    if (!highestTier) {
-      const ownsProducts = allProducts.some(
-        (p: any) => p.company_id === whopCompanyId
-      );
-      if (ownsProducts) {
-        highestTier = "elite";
-        highestLevel = tierHierarchy["elite"];
-        console.log(`[detectAndAssignPlan] Company owns products (company_id match) → elite tier`);
-      }
-    }
-
-    // If no access to any tier, downgrade to free
-    if (!highestTier || highestLevel === 0) {
-      highestTier = "free";
-      highestLevel = 0;
-      console.log(`[detectAndAssignPlan] No access to any Ticketoo tier products, will sync to free`);
-    }
-
-    console.log(`[detectAndAssignPlan] Detected tier: ${highestTier} (admin=${isAdmin})`);
-
-    const targetPlan = await ctx.runQuery(api.plans.queries.getPlanByName, {
-      name: highestTier as "free" | "pro" | "elite",
-    });
-    if (!targetPlan) {
-      console.error(`[detectAndAssignPlan] Plan "${highestTier}" not found`);
-      return;
-    }
-
-    const company = await ctx.runQuery(api.companies.queries.getCompanyById, { companyId });
-    if (!company) return;
-
-    const currentPlan = await ctx.runQuery(api.plans.queries.getPlanById, {
-      planId: company.planId,
-    });
-    const currentLevel = currentPlan ? (tierHierarchy[currentPlan.name] || 0) : 0;
-
-    if (highestLevel > currentLevel) {
-      await ctx.runMutation(api.companies.mutations.updatePlan, {
-        companyId,
-        planId: targetPlan._id,
-        resetUsage: true,
-      });
-      console.log(`[detectAndAssignPlan] Upgraded from ${currentPlan?.name || "unknown"} to ${highestTier}`);
-    } else if (highestLevel < currentLevel) {
-      await ctx.runMutation(api.companies.mutations.updatePlan, {
-        companyId,
-        planId: targetPlan._id,
-        resetUsage: false,
-      });
-      console.log(`[detectAndAssignPlan] Downgraded from ${currentPlan?.name || "unknown"} to ${highestTier} (lost access)`);
-    } else {
-      console.log(`[detectAndAssignPlan] Already on ${currentPlan?.name || "unknown"}, no change needed`);
-    }
-  } catch (error) {
-    // Don't fail onboarding if tier detection fails
-    console.error(`[detectAndAssignPlan] Error during tier detection:`, error);
-  }
-}
 
 /**
  * Fetch the Whop business/store name from the Whop API
@@ -333,46 +153,37 @@ async function getCompanyFromExperience(
   // METHOD 1 (AUTHORITATIVE): Use /v5/app/experiences to get the correct company
   // This endpoint returns ALL experiences for our app with their company_id
   // This is the ONLY reliable way to determine which company owns an experience
-  // NOTE: This endpoint is paginated (10 per page) so we must fetch all pages
   try {
     console.log(`[getCompanyFromExperience] Trying /v5/app/experiences for ${experienceId}...`);
-    let page = 1;
-    let totalPages = 1;
-
-    while (page <= totalPages) {
-      const appExperiencesResponse = await fetch(`https://api.whop.com/api/v5/app/experiences?page=${page}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Accept': 'application/json',
-        }
-      });
-
-      if (!appExperiencesResponse.ok) {
-        console.log(`[getCompanyFromExperience] /v5/app/experiences page ${page} returned ${appExperiencesResponse.status}`);
-        break;
+    const appExperiencesResponse = await fetch(`https://api.whop.com/api/v5/app/experiences`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json',
       }
+    });
 
+    if (appExperiencesResponse.ok) {
       const appExperiencesData = await appExperiencesResponse.json();
       const experiences = appExperiencesData.data || [];
-      totalPages = appExperiencesData.pagination?.total_pages || 1;
-      console.log(`[getCompanyFromExperience] Page ${page}/${totalPages}, ${experiences.length} experiences`);
 
+      // Find the experience that matches our experienceId
       const matchingExperience = experiences.find((exp: any) => exp.id === experienceId);
 
       if (matchingExperience && matchingExperience.company_id) {
-        console.log(`[getCompanyFromExperience] ✅ Found company from /v5/app/experiences page ${page}: ${matchingExperience.company_id}`);
+        console.log(`[getCompanyFromExperience] ✅ Found company from /v5/app/experiences: ${matchingExperience.company_id}`);
+        // Fetch the actual business/store name instead of using experience name
         const businessName = await fetchWhopBusinessName(matchingExperience.company_id);
         return {
           whopCompanyId: matchingExperience.company_id,
           companyName: businessName || matchingExperience.name || "My Company",
         };
+      } else {
+        console.log(`[getCompanyFromExperience] Experience ${experienceId} not found in app experiences list`);
       }
-
-      page++;
+    } else {
+      console.log(`[getCompanyFromExperience] /v5/app/experiences returned ${appExperiencesResponse.status}`);
     }
-
-    console.log(`[getCompanyFromExperience] Experience ${experienceId} not found in any page of app experiences`);
   } catch (e) {
     console.log(`[getCompanyFromExperience] /v5/app/experiences failed:`, e);
   }
@@ -679,7 +490,29 @@ export const onboardUser = action({
         console.log(`[onboardUser] Found company by experienceId: ${company._id} (${company.name})`);
         whopCompanyId = company.whopCompanyId;
         companyName = company.name;
-      } else if (companyIdFromHeader) {
+      } else if (companyRoute) {
+        // Step 2.1: Experience ID not found — try company route (stable across reinstalls)
+        console.log(`[onboardUser] Experience ID not found, trying company route: ${companyRoute}`);
+        company = await ctx.runQuery(
+          api.companies.queries.getCompanyByRoute,
+          { companyRoute }
+        );
+
+        if (company) {
+          console.log(`[onboardUser] Found company by route: ${company._id} (${company.name})`);
+          whopCompanyId = company.whopCompanyId;
+          companyName = company.name;
+
+          // Update the stale experience ID
+          console.log(`[onboardUser] Updating experienceId from ${company.whopExperienceId} to ${experienceId} (via route lookup)`);
+          await ctx.runMutation(api.companies.mutations.updateExperienceId, {
+            companyId: company._id,
+            experienceId,
+          });
+        }
+      }
+
+      if (!company && companyIdFromHeader) {
         // Step 2.5: Use company ID from header if available
         // SECURITY: Verify the header value against authoritative API before trusting it
         console.log(`[onboardUser] Verifying company ID from header: ${companyIdFromHeader}`);
@@ -695,8 +528,9 @@ export const onboardUser = action({
           console.log(`[onboardUser] Header company verified (exists in DB): ${company._id}`);
           whopCompanyId = companyIdFromHeader;
           companyName = company.name;
-          // Update experienceId mapping if not set
-          if (!company.whopExperienceId) {
+          // Update experienceId if it changed (handles app reinstalls)
+          if (company.whopExperienceId !== experienceId) {
+            console.log(`[onboardUser] Updating stale experienceId from ${company.whopExperienceId} to ${experienceId} (via header)`);
             await ctx.runMutation(api.companies.mutations.updateExperienceId, {
               companyId: company._id,
               experienceId,
@@ -730,9 +564,11 @@ export const onboardUser = action({
             // Don't set whopCompanyId - let it fall through to other methods
           }
         }
-      } else if (companyRoute) {
-        // Step 2.6: Use company route from iframe SDK to look up company
-        console.log(`[onboardUser] Looking up company by route: ${companyRoute}`);
+      }
+
+      if (!company && !whopCompanyId && companyRoute) {
+        // Step 2.6: Use company route from iframe SDK to look up company via Whop API
+        console.log(`[onboardUser] Looking up company by route via API: ${companyRoute}`);
         const apiKey = process.env.WHOP_API_KEY;
 
         // Try to get company by route/slug using Whop API
@@ -766,8 +602,9 @@ export const onboardUser = action({
 
               if (company) {
                 companyName = company.name;
-                // Update experienceId mapping if not set
-                if (!company.whopExperienceId) {
+                // Update experienceId if it changed (handles app reinstalls)
+                if (company.whopExperienceId !== experienceId) {
+                  console.log(`[onboardUser] Updating stale experienceId from ${company.whopExperienceId} to ${experienceId} (via route)`);
                   await ctx.runMutation(api.companies.mutations.updateExperienceId, {
                     companyId: company._id,
                     experienceId,
@@ -793,7 +630,8 @@ export const onboardUser = action({
 
               if (company) {
                 companyName = company.name;
-                if (!company.whopExperienceId) {
+                if (company.whopExperienceId !== experienceId) {
+                  console.log(`[onboardUser] Updating stale experienceId from ${company.whopExperienceId} to ${experienceId} (via user token)`);
                   await ctx.runMutation(api.companies.mutations.updateExperienceId, {
                     companyId: company._id,
                     experienceId,
@@ -826,8 +664,9 @@ export const onboardUser = action({
             { whopCompanyId }
           );
 
-          // Update experienceId if company exists but didn't have it
-          if (company && !company.whopExperienceId) {
+          // Update experienceId if company exists (handles reinstalls where experienceId changed)
+          if (company && company.whopExperienceId !== experienceId) {
+            console.log(`[onboardUser] Updating stale experienceId from ${company.whopExperienceId} to ${experienceId}`);
             await ctx.runMutation(api.companies.mutations.updateExperienceId, {
               companyId: company._id,
               experienceId,
@@ -877,6 +716,53 @@ export const onboardUser = action({
             console.error(`[onboardUser] Experiences list lookup also failed:`, experiencesError);
           }
 
+          // Step 3.5: Last resort - check if user belongs to exactly ONE company in our DB
+          // This handles reinstalls where Whop API is slow to propagate the new experience
+          // ONLY safe when user has a single company — with multiple, we can't know which one
+          if (!whopCompanyId) {
+            console.log(`[onboardUser] All API methods failed, checking user's existing companies in DB...`);
+            try {
+              const existingUser = await ctx.runQuery(
+                api.users.queries.getUserByWhopUserId,
+                { whopUserId }
+              );
+
+              if (existingUser) {
+                const userCompanies = await ctx.runQuery(
+                  api.users.multi_company_helpers.getUserCompanies,
+                  { userId: existingUser._id }
+                );
+
+                if (userCompanies && userCompanies.length === 1) {
+                  const onlyCompany = userCompanies[0];
+                  console.log(`[onboardUser] User has exactly 1 company: ${onlyCompany.companyName} (${onlyCompany.companyId})`);
+
+                  company = await ctx.runQuery(
+                    api.companies.queries.getCompanyById,
+                    { companyId: onlyCompany.companyId as Id<"companies"> }
+                  );
+
+                  if (company) {
+                    whopCompanyId = company.whopCompanyId;
+                    companyName = company.name;
+                    console.log(`[onboardUser] Matched to existing company via user membership: ${whopCompanyId} (${companyName})`);
+
+                    // Update experienceId to the new one
+                    console.log(`[onboardUser] Updating experienceId to ${experienceId} for reinstalled app`);
+                    await ctx.runMutation(api.companies.mutations.updateExperienceId, {
+                      companyId: company._id,
+                      experienceId,
+                    });
+                  }
+                } else if (userCompanies && userCompanies.length > 1) {
+                  console.log(`[onboardUser] User has ${userCompanies.length} companies — cannot auto-match, need Whop API`);
+                }
+              }
+            } catch (userLookupError) {
+              console.error(`[onboardUser] User company lookup failed:`, userLookupError);
+            }
+          }
+
           // If still no company, show helpful error with the experience ID for manual setup
           if (!whopCompanyId) {
             return {
@@ -919,6 +805,15 @@ export const onboardUser = action({
         throw new Error("Failed to create company");
       }
 
+      // Step 4.1: Save company route if available (stable identifier for reinstalls)
+      if (companyRoute && company.whopCompanyRoute !== companyRoute) {
+        console.log(`[onboardUser] Saving company route: ${companyRoute}`);
+        await ctx.runMutation(api.companies.mutations.updateCompanyRoute, {
+          companyId: company._id,
+          companyRoute,
+        });
+      }
+
       // Step 4.5: Auto-fix company name on EVERY login
       // This ensures companies always have the correct business/store name, not experience name
       // Runs for both new and existing companies since API might fail initially
@@ -943,18 +838,6 @@ export const onboardUser = action({
         } else if (!correctBusinessName && looksLikeExperienceName) {
           console.log(`[onboardUser] ⚠️ Company name "${currentName}" looks like experience name but couldn't fetch correct name`);
         }
-      }
-
-      // Step 4.6: Auto-detect and assign plan based on product ownership
-      // This implements the "Calloo model" - subscriptions tied to products.
-      // App owners get elite tier, customers get tier based on their Whop membership.
-      await detectAndAssignPlan(ctx, company._id, whopCompanyId, whopUserId);
-      // Re-fetch company in case plan was updated
-      company = await ctx.runQuery(api.companies.queries.getCompanyById, {
-        companyId: company._id,
-      });
-      if (!company) {
-        throw new Error("Failed to re-fetch company after plan detection");
       }
 
       // Step 5: Determine user's access level via Whop API

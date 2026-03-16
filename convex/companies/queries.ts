@@ -61,6 +61,24 @@ export const getCompanyByExperienceId = query({
 });
 
 // ============================================================================
+// GET COMPANY BY ROUTE (stable across reinstalls)
+// ============================================================================
+
+export const getCompanyByRoute = query({
+  args: {
+    companyRoute: v.string(),
+  },
+  handler: async (ctx, { companyRoute }) => {
+    return await ctx.db
+      .query("companies")
+      .withIndex("by_whop_company_route", (q) =>
+        q.eq("whopCompanyRoute", companyRoute)
+      )
+      .first();
+  },
+});
+
+// ============================================================================
 // GET COMPANY BY ID
 // ============================================================================
 
@@ -162,6 +180,7 @@ export const getFullCompanyConfig = query({
         hasInsights: plan.hasInsights,
         hasCustomTriggers: plan.hasCustomTriggers,
         hasFileAttachments: plan.hasFileAttachments,
+        hasDepartments: plan.hasDepartments,
       },
 
       // AI Configuration
@@ -184,6 +203,9 @@ export const getFullCompanyConfig = query({
       billingStatus: company.billingStatus,
       scheduledPlanChangeAt: company.scheduledPlanChangeAt,
       scheduledPlanId: company.scheduledPlanId,
+
+      // Departments
+      departmentsEnabled: company.departmentsEnabled ?? false,
 
       // Status
       onboardingCompleted: company.onboardingCompleted,
@@ -299,5 +321,69 @@ export const verifyWhopCompanyIdUnique = query({
     }
 
     return { valid: true };
+  },
+});
+
+/**
+ * Debug: Check company usage limits by name
+ *
+ * Use this to verify if a company would be blocked by usage limits.
+ * Run in Convex dashboard: companies:checkUsageLimitsByName({ companyName: "Crypto Wolf" })
+ */
+export const checkUsageLimitsByName = query({
+  args: { companyName: v.string() },
+  handler: async (ctx, { companyName }) => {
+    // Find company by name (case-insensitive partial match)
+    const companies = await ctx.db.query("companies").collect();
+
+    const company = companies.find(c =>
+      c.name.toLowerCase().includes(companyName.toLowerCase())
+    );
+
+    if (!company) {
+      return { error: `Company containing "${companyName}" not found` };
+    }
+
+    // Get the plan
+    const plan = await ctx.db.get(company.planId);
+
+    if (!plan) {
+      return { error: "Plan not found for company" };
+    }
+
+    const remainingResponses = plan.aiResponsesPerMonth - company.aiResponsesThisMonth;
+    const hasReachedLimit = remainingResponses <= 0;
+    const percentUsed = Math.round((company.aiResponsesThisMonth / plan.aiResponsesPerMonth) * 100);
+
+    return {
+      companyName: company.name,
+      companyId: company._id,
+
+      // Usage stats
+      usage: {
+        current: company.aiResponsesThisMonth,
+        limit: plan.aiResponsesPerMonth,
+        remaining: Math.max(0, remainingResponses),
+        percentUsed: `${percentUsed}%`,
+      },
+
+      // THE KEY QUESTION
+      limitStatus: {
+        hasReachedLimit,
+        wouldAiRespond: hasReachedLimit ? "❌ NO - Limit reached, AI will NOT respond" : "✅ YES - AI will respond",
+      },
+
+      // Plan info
+      plan: {
+        name: plan.name,
+        price: plan.price,
+      },
+
+      // Reset timing
+      billing: {
+        resetAt: new Date(company.aiResponsesResetAt).toISOString(),
+        periodEnd: new Date(company.currentPeriodEnd).toISOString(),
+      },
+    };
   },
 });

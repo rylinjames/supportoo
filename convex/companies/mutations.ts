@@ -44,6 +44,22 @@ export const updateExperienceId = mutation({
 });
 
 /**
+ * Update company route (slug) for an existing company
+ */
+export const updateCompanyRoute = mutation({
+  args: {
+    companyId: v.id("companies"),
+    companyRoute: v.string(),
+  },
+  handler: async (ctx, { companyId, companyRoute }) => {
+    await ctx.db.patch(companyId, {
+      whopCompanyRoute: companyRoute,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
  * Create a new company
  *
  * Called when the first admin from a company accesses the app.
@@ -139,22 +155,6 @@ export const createCompany = mutation({
     });
 
     return companyId;
-  },
-});
-
-/**
- * Toggle whether AI can reference hidden Whop products
- */
-export const toggleAIHiddenProducts = mutation({
-  args: {
-    companyId: v.id("companies"),
-    aiIncludeHiddenProducts: v.boolean(),
-  },
-  handler: async (ctx, { companyId, aiIncludeHiddenProducts }) => {
-    await ctx.db.patch(companyId, {
-      aiIncludeHiddenProducts,
-      updatedAt: Date.now(),
-    });
   },
 });
 
@@ -717,9 +717,8 @@ export const updatePlan = mutation({
   args: {
     companyId: v.id("companies"),
     planId: v.id("plans"),
-    resetUsage: v.optional(v.boolean()),
   },
-  handler: async (ctx, { companyId, planId, resetUsage }) => {
+  handler: async (ctx, { companyId, planId }) => {
     const company = await ctx.db.get(companyId);
     if (!company) {
       throw new Error("Company not found");
@@ -730,25 +729,14 @@ export const updatePlan = mutation({
       throw new Error("Plan not found");
     }
 
-    const now = Date.now();
     const updates: any = {
       planId,
-      updatedAt: now,
+      updatedAt: Date.now(),
     };
 
     // If downgrading, reset AI model to first available in new plan
     if (!newPlan.aiModels.includes(company.selectedAiModel)) {
       updates.selectedAiModel = newPlan.aiModels[0];
-    }
-
-    // Reset usage counters when upgrading (e.g., auto-tier detection)
-    if (resetUsage) {
-      updates.aiResponsesThisMonth = 0;
-      updates.aiResponsesResetAt = now + 30 * 24 * 60 * 60 * 1000;
-      updates.usageWarningSent = false;
-      updates.billingStatus = "active";
-      updates.currentPeriodStart = now;
-      updates.currentPeriodEnd = now + 30 * 24 * 60 * 60 * 1000;
     }
 
     await ctx.db.patch(companyId, updates);

@@ -194,6 +194,7 @@ export function Sidebar({ userType, user }: SidebarProps) {
       items: [
         { id: "templates", icon: FileText, label: "Templates", route: "/workspace" },
         { id: "team", icon: Users, label: "Team", route: "/workspace?tab=team" },
+        { id: "departments", icon: Building2, label: "Departments", route: "/workspace?tab=departments" },
       ],
     };
 
@@ -298,7 +299,7 @@ export function Sidebar({ userType, user }: SidebarProps) {
       )}
 
       {/* User Section at BOTTOM */}
-      <div className="p-3">
+      <div className="p-3 overflow-y-auto max-h-[50vh]">
         <UserSection
           isCollapsed={isCollapsed}
           userAvatar={user?.user.avatarUrl}

@@ -32,6 +32,7 @@ export default defineSchema({
     hasPrioritySupport: v.boolean(),
     hasCustomTriggers: v.boolean(),
     hasFileAttachments: v.boolean(),
+    hasDepartments: v.optional(v.boolean()),
 
     // Limits
     maxAgents: v.number(),
@@ -47,6 +48,7 @@ export default defineSchema({
     // Core company info
     whopCompanyId: v.string(), // Whop's company ID
     whopExperienceId: v.optional(v.string()), // Experience ID for this company's app installation
+    whopCompanyRoute: v.optional(v.string()), // Company slug/route (stable across reinstalls)
     name: v.string(),
     domain: v.optional(v.string()),
     timezone: v.string(),
@@ -103,13 +105,16 @@ export default defineSchema({
     openaiContextFileId: v.optional(v.string()), // Current context file ID in Vector Store
     testAssistantId: v.optional(v.string()), // Cached test assistant ID (for AI Studio testing)
 
+    // Departments
+    departmentsEnabled: v.optional(v.boolean()),
+
     // Onboarding status
     onboardingCompleted: v.boolean(),
     setupWizardCompleted: v.boolean(),
 
     // Product sync settings
     excludedProductIds: v.optional(v.array(v.string())), // Whop product IDs to exclude from sync
-    aiIncludeHiddenProducts: v.optional(v.boolean()), // Allow AI to reference hidden Whop products
+    aiIncludeHiddenProducts: v.optional(v.boolean()), // Whether AI can reference hidden products
 
     // Metadata
     createdAt: v.number(),
@@ -117,6 +122,7 @@ export default defineSchema({
   })
     .index("by_whop_company_id", ["whopCompanyId"])
     .index("by_whop_experience_id", ["whopExperienceId"])
+    .index("by_whop_company_route", ["whopCompanyRoute"])
     .index("by_whop_membership_id", ["whopMembershipId"])
     .index("by_plan", ["planId"])
     .index("by_billing_status", ["billingStatus"]),
@@ -186,6 +192,9 @@ export default defineSchema({
       v.literal("customer")    // Can only view their own tickets
     ),
 
+    // Department assignments (agent can belong to multiple departments)
+    departmentIds: v.optional(v.array(v.id("departments"))),
+
     // Timestamps
     joinedAt: v.number(), // When user joined this company
     lastActiveInCompany: v.number(), // Last time user was active in this company
@@ -211,10 +220,12 @@ export default defineSchema({
     // Status & flow
     status: v.union(
       v.literal("ai_handling"),
+      v.literal("awaiting_department"),
       v.literal("available"),
       v.literal("support_staff_handling"),
       v.literal("resolved")
     ),
+    departmentId: v.optional(v.id("departments")),
     handoffTriggeredAt: v.optional(v.number()),
     handoffReason: v.optional(v.string()), // e.g., "User requested support staff", "Billing question"
 
@@ -299,6 +310,8 @@ export default defineSchema({
     systemMessageType: v.optional(
       v.union(
         v.literal("handoff"),
+        v.literal("department_prompt"),
+        v.literal("department_selected"),
         v.literal("agent_joined"),
         v.literal("agent_left"),
         v.literal("issue_resolved")
@@ -674,7 +687,7 @@ export default defineSchema({
     // Plan details
     title: v.string(),
     description: v.optional(v.string()),
-    internalNotes: v.optional(v.string()), // Whop's internal_notes field (subtitle shown in dashboard)
+    internalNotes: v.optional(v.string()),
 
     // Pricing (in cents)
     initialPrice: v.optional(v.number()), // First payment amount
@@ -724,4 +737,20 @@ export default defineSchema({
     .index("by_company_whop_plan", ["companyId", "whopPlanId"])
     .index("by_company_visible", ["companyId", "isVisible"])
     .index("by_company_tier", ["companyId", "planTier"]),
+
+  // ============================================================================
+  // DEPARTMENTS - Routing categories for handoff
+  // ============================================================================
+  departments: defineTable({
+    companyId: v.id("companies"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    isActive: v.boolean(),
+    isDefault: v.optional(v.boolean()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_company", ["companyId"])
+    .index("by_company_active", ["companyId", "isActive"]),
 });

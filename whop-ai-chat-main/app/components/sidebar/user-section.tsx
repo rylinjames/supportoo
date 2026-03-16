@@ -162,7 +162,7 @@ export function UserSection({
       {/* User Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-[220px]">
+        <DropdownMenuContent align="start" className="w-[220px] z-[80]">
           <DropdownMenuLabel>
           <div className="flex flex-col gap-1">
             {userName ? (

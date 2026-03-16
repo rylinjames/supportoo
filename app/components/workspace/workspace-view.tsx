@@ -9,8 +9,9 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { TemplatesTab } from "./templates-tab";
 import { TeamTab } from "./team-tab";
+import { DepartmentsTab } from "./departments-tab";
 
-type TabId = "templates" | "team";
+type TabId = "templates" | "team" | "departments";
 
 export function WorkspaceView() {
   const { userData } = useUser();
@@ -20,13 +21,14 @@ export function WorkspaceView() {
   // Read tab from URL query params
   const tabParam = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<TabId>(
-    tabParam === "team" ? "team" : "templates"
+    tabParam === "team" ? "team" : tabParam === "departments" ? "departments" : "templates"
   );
 
   // Update tab when URL changes
   useEffect(() => {
     const tab = searchParams.get("tab");
     if (tab === "team") setActiveTab("team");
+    else if (tab === "departments") setActiveTab("departments");
     else setActiveTab("templates");
   }, [searchParams]);
 
@@ -53,6 +55,12 @@ export function WorkspaceView() {
       return {
         title: "Team",
         description: "Manage your support team members",
+      };
+    }
+    if (activeTab === "departments") {
+      return {
+        title: "Departments",
+        description: "Set up departments so the bot routes customers to the right team",
       };
     }
     return {
@@ -107,6 +115,8 @@ export function WorkspaceView() {
           <TemplatesTab
             companyId={userData!.currentCompanyId as Id<"companies">}
           />
+        ) : activeTab === "departments" ? (
+          <DepartmentsTab />
         ) : (
           <TeamTab />
         )}

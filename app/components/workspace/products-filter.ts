@@ -19,3 +19,4 @@ export function hasNonArchivedPlan(plans: PlanVisibilityInput[]): boolean {
   if (plans.length === 0) return true;
   return plans.some((plan) => (plan.visibility || "").toLowerCase() !== "archived");
 }
+

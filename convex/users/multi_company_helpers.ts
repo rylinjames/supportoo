@@ -321,6 +321,7 @@ export const getTeamMembersForCompany = query({
           role: uc.role, // Role from junction table
           joinedAt: uc.joinedAt,
           lastActiveInCompany: uc.lastActiveInCompany,
+          departmentIds: uc.departmentIds || [],
         };
       })
     );

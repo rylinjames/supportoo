@@ -51,13 +51,9 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
   // Actions
   const syncProducts = useAction(api.products.actions.syncProducts);
 
-  // Company setting for AI hidden products
-  const company = useQuery(api.companies.queries.getCompanyById, { companyId });
-
   // Mutations
   const toggleAIInclusion = useMutation(api.products.mutations.toggleProductAIInclusion);
   const forceCleanupCheckoutLinks = useMutation(api.products.mutations.forceCleanupCheckoutLinks);
-  const toggleAIHiddenProducts = useMutation(api.companies.mutations.toggleAIHiddenProducts);
 
   const handleToggleAI = async (productId: Id<"products">, currentValue: boolean) => {
     try {
@@ -126,8 +122,8 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(price / 100);
   };
 
@@ -220,7 +216,7 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
 
       {/* Header with filters */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
@@ -237,22 +233,6 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
               <Label htmlFor="show-hidden" className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1">
                 <EyeOff className="h-3 w-3" />
                 Show {hiddenCount} hidden
-              </Label>
-            </div>
-          )}
-          {hiddenCount > 0 && (
-            <div className="flex items-center gap-2">
-              <Switch
-                id="ai-hidden"
-                checked={company?.aiIncludeHiddenProducts === true}
-                onCheckedChange={(checked) => {
-                  toggleAIHiddenProducts({ companyId, aiIncludeHiddenProducts: checked });
-                  toast.success(checked ? "AI can now reference hidden products" : "AI will only reference visible products");
-                }}
-              />
-              <Label htmlFor="ai-hidden" className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1">
-                <Bot className="h-3 w-3" />
-                AI sees hidden
               </Label>
             </div>
           )}
@@ -300,16 +280,10 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
       ) : (
         /* Products Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {products?.slice().sort((a: any, b: any) => {
-            const aHidden = !a.isVisible || !a.isActive ? 1 : 0;
-            const bHidden = !b.isVisible || !b.isActive ? 1 : 0;
-            return aHidden - bHidden;
-          }).map((product: any) => {
+          {products?.map((product: any) => {
             const productPlans = product.pricingOptions || [];
             // Default to true if includeInAI is not set
             const isIncludedInAI = product.includeInAI !== false;
-            const isHiddenOverride = !product.isVisible && company?.aiIncludeHiddenProducts !== true;
-            const effectiveAI = isIncludedInAI && !isHiddenOverride;
 
             return (
               <div
@@ -373,20 +347,15 @@ export function ProductsTab({ companyId }: ProductsTabProps) {
                   <div className="flex items-center gap-2">
                     <Bot className={cn(
                       "h-4 w-4",
-                      effectiveAI ? "text-primary" : "text-muted-foreground"
+                      isIncludedInAI ? "text-primary" : "text-muted-foreground"
                     )} />
                     <span className="text-xs text-muted-foreground">
-                      {!isIncludedInAI
-                        ? "Hidden from AI"
-                        : isHiddenOverride
-                        ? "Hidden product — AI won't see"
-                        : "AI can reference this product"}
+                      {isIncludedInAI ? "AI can reference this product" : "Hidden from AI"}
                     </span>
                   </div>
                   <Switch
-                    checked={effectiveAI}
+                    checked={isIncludedInAI}
                     onCheckedChange={() => handleToggleAI(product._id, isIncludedInAI)}
-                    disabled={isHiddenOverride}
                     className="scale-75"
                   />
                 </div>

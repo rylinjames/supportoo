@@ -34,8 +34,7 @@ async function buildCompanyProductCatalog(
   ctx: any,
   companyId: string,
   includeHidden: boolean,
-  includeInactive: boolean,
-  includeHiddenPlans: boolean = false
+  includeInactive: boolean
 ) {
   let products = await ctx.db
     .query("products")
@@ -55,10 +54,7 @@ async function buildCompanyProductCatalog(
     .collect();
 
   const visiblePlansByProduct = plans.reduce((acc: Record<string, CatalogPlan[]>, plan: any) => {
-    if (plan.visibility === "archived") {
-      return acc;
-    }
-    if (!includeHiddenPlans && plan.isVisible !== true) {
+    if (plan.visibility === "archived" || plan.isVisible !== true) {
       return acc;
     }
     const key = plan.whopProductId;
@@ -79,7 +75,7 @@ async function buildCompanyProductCatalog(
   }, {});
 
   return products
-    .sort((a: any, b: any) => (a.title || "").localeCompare(b.title || ""))
+    .sort((a: any, b: any) => b.updatedAt - a.updatedAt)
     .map((product: any) => ({
       ...product,
       pricingOptions: (visiblePlansByProduct[product.whopProductId] || []).sort((a: CatalogPlan, b: CatalogPlan) => {
@@ -172,26 +168,21 @@ export const getCompanyProductCatalog = query({
     includeInactive: v.optional(v.boolean()),
   },
   handler: async (ctx, { companyId, includeHidden = false, includeInactive = false }) => {
-    // Admin UI always sees all non-archived plans so pricing is visible
-    return await buildCompanyProductCatalog(ctx, companyId, includeHidden, includeInactive, true);
+    return await buildCompanyProductCatalog(ctx, companyId, includeHidden, includeInactive);
   },
 });
 
 /**
  * Canonical product catalog for AI context.
  *
- * Respects the company's aiIncludeHiddenProducts setting.
- * Excludes archived and inactive products.
- * Only products with includeInAI !== false are returned.
+ * Only visible, active, AI-included products are returned.
  */
 export const getVisibleProductCatalogForAI = query({
   args: {
     companyId: v.id("companies"),
   },
   handler: async (ctx, { companyId }) => {
-    const company = await ctx.db.get(companyId);
-    const includeHidden = company?.aiIncludeHiddenProducts === true;
-    const catalog = await buildCompanyProductCatalog(ctx, companyId, includeHidden, false, true);
+    const catalog = await buildCompanyProductCatalog(ctx, companyId, false, false);
     return catalog.filter((product: any) => product.includeInAI !== false);
   },
 });

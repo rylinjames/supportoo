@@ -24,17 +24,12 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    overflow-x: hidden;
-    max-width: 100vw;
   }
-
+  
   body {
     touch-action: manipulation;
-    overflow-x: hidden;
-    max-width: 100vw;
-    position: relative;
   }
-
+  
   /* Ensure inputs don't trigger zoom */
   input[type="text"],
   input[type="email"],
@@ -49,9 +44,8 @@
     -moz-appearance: none;
     appearance: none;
     border-radius: 0;
-    touch-action: manipulation;
   }
-
+  
   /* Keep placeholder text smaller */
   input::placeholder,
   textarea::placeholder {

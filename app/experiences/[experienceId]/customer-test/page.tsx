@@ -14,8 +14,6 @@ import { Send, User, Bot, UserCheck, ArrowLeft, MessageSquarePlus } from "lucide
 import Link from "next/link";
 import { toast } from "sonner";
 import { logClient, logError } from "@/lib/debug-logger";
-import { MobileViewport } from "@/app/components/customer/mobile-viewport";
-import { usePreventZoom } from "@/app/hooks/use-prevent-zoom";
 
 export default function CustomerTestPage() {
   const params = useParams();
@@ -24,7 +22,6 @@ export default function CustomerTestPage() {
   const [messageInput, setMessageInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = usePreventZoom<HTMLInputElement>();
 
   // Create a test customer user
   const [testCustomerId, setTestCustomerId] = useState<Id<"users"> | null>(null);
@@ -187,16 +184,11 @@ export default function CustomerTestPage() {
       
       logClient("Message sent successfully");
       // AI will respond automatically after a short delay
-      setTimeout(() => {
-        setIsTyping(false);
-        inputRef.current?.focus();
-      }, 2000);
-      inputRef.current?.focus();
+      setTimeout(() => setIsTyping(false), 2000); // Show typing indicator for 2 seconds
     } catch (error: any) {
       logError("Error sending message", error);
       toast.error(`Failed to send message: ${error?.message || 'Unknown error'}`);
       setIsTyping(false);
-      inputRef.current?.focus();
     }
   };
 
@@ -274,7 +266,6 @@ export default function CustomerTestPage() {
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
-      <MobileViewport />
       {/* Header */}
       <div className="border-b border-border p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -463,7 +454,6 @@ export default function CustomerTestPage() {
 
           <div className="flex gap-2">
             <Input
-              ref={inputRef}
               value={messageInput}
               onChange={(e) => setMessageInput(e.target.value)}
               onKeyDown={(e) => {

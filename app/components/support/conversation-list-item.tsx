@@ -4,7 +4,7 @@ import {
   AvatarFallback,
 } from "../../../components/ui/avatar";
 import { Badge } from "../../../components/ui/badge";
-import { Check, Bot, AlertCircle, User, CheckCircle } from "lucide-react";
+import { Check, Bot, AlertCircle, User, CheckCircle, Clock, Building2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { Conversation } from "./types";
 import { useUser } from "@/app/contexts/user-context";
@@ -33,6 +33,16 @@ export function ConversationListItem({
           >
             <Bot className="h-3 w-3" />
             AI handling
+          </Badge>
+        );
+      case "awaiting_department":
+        return (
+          <Badge
+            variant="secondary"
+            className="h-5 px-2 text-[10px] bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20 hover:bg-yellow-500/10 flex items-center gap-1"
+          >
+            <Clock className="h-3 w-3" />
+            Choosing dept
           </Badge>
         );
       case "available":
@@ -231,6 +241,19 @@ export function ConversationListItem({
             </>
           )}
         </div>
+
+        {/* Department Badge */}
+        {conversation.departmentName && (
+          <div className="flex items-center gap-1 mt-1.5">
+            <Badge
+              variant="secondary"
+              className="h-4 px-1.5 text-[9px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/10 flex items-center gap-0.5"
+            >
+              <Building2 className="h-2.5 w-2.5" />
+              {conversation.departmentName}
+            </Badge>
+          </div>
+        )}
 
         {/* Handoff Reason (Available only) */}
         {conversation.status === "available" && conversation.handoffReason && (

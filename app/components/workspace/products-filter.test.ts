@@ -53,3 +53,4 @@ describe("hasNonArchivedPlan", () => {
     expect(hasNonArchivedPlan([])).toBe(true);
   });
 });
+

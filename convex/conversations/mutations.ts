@@ -166,8 +166,46 @@ export const requestHumanSupport = mutation({
     if (!conversation) throw new Error("Conversation not found");
     if (conversation.customerId !== customerId) throw new Error("Unauthorized");
 
+    const company = await ctx.db.get(conversation.companyId);
+    if (!company) throw new Error("Company not found");
+
     const now = Date.now();
 
+    // Check if departments are enabled
+    if (company.departmentsEnabled) {
+      const activeDepts = await ctx.db
+        .query("departments")
+        .withIndex("by_company_active", (q) =>
+          q.eq("companyId", conversation.companyId).eq("isActive", true)
+        )
+        .collect();
+
+      if (activeDepts.length > 0) {
+        await ctx.db.patch(conversationId, {
+          status: "awaiting_department",
+          handoffTriggeredAt: now,
+          handoffReason: "Customer requested human support",
+          updatedAt: now,
+        });
+
+        const deptList = activeDepts
+          .map((d, i) => `${i + 1}. ${d.name}${d.description ? ` - ${d.description}` : ""}`)
+          .join("\n");
+
+        await ctx.db.insert("messages", {
+          conversationId,
+          companyId: conversation.companyId,
+          role: "system",
+          content: `Before connecting you with our team, which department can best help you?\n\n${deptList}`,
+          timestamp: now,
+          systemMessageType: "department_prompt",
+        });
+
+        return { success: true };
+      }
+    }
+
+    // No departments -- go straight to available
     await ctx.db.patch(conversationId, {
       status: "available",
       handoffTriggeredAt: now,
@@ -184,7 +222,6 @@ export const requestHumanSupport = mutation({
       systemMessageType: "handoff",
     });
 
-    // Notify support agents that a customer needs help
     await ctx.scheduler.runAfter(
       0,
       api.notifications.whop.sendHandoffRequestNotification,
@@ -207,6 +244,7 @@ export const updateStatus = mutation({
     conversationId: v.id("conversations"),
     status: v.union(
       v.literal("ai_handling"),
+      v.literal("awaiting_department"),
       v.literal("available"),
       v.literal("support_staff_handling")
     ),
@@ -328,9 +366,49 @@ export const triggerHandoff = mutation({
       throw new Error("Conversation not found");
     }
 
+    const company = await ctx.db.get(conversation.companyId);
+    if (!company) {
+      throw new Error("Company not found");
+    }
+
     const now = Date.now();
 
-    // Update conversation status
+    // Check if departments are enabled and active departments exist
+    if (company.departmentsEnabled) {
+      const activeDepts = await ctx.db
+        .query("departments")
+        .withIndex("by_company_active", (q) =>
+          q.eq("companyId", conversation.companyId).eq("isActive", true)
+        )
+        .collect();
+
+      if (activeDepts.length > 0) {
+        // Set to awaiting_department so customer picks a department first
+        await ctx.db.patch(conversationId, {
+          status: "awaiting_department",
+          handoffTriggeredAt: now,
+          handoffReason: reason,
+          updatedAt: now,
+        });
+
+        const deptList = activeDepts
+          .map((d, i) => `${i + 1}. ${d.name}${d.description ? ` - ${d.description}` : ""}`)
+          .join("\n");
+
+        await ctx.db.insert("messages", {
+          conversationId,
+          companyId: conversation.companyId,
+          role: "system",
+          content: `Before connecting you with our team, which department can best help you?\n\n${deptList}`,
+          timestamp: now,
+          systemMessageType: "department_prompt",
+        });
+
+        return { success: true, handoffAt: now, awaitingDepartment: true };
+      }
+    }
+
+    // No departments -- go straight to available
     await ctx.db.patch(conversationId, {
       status: "available",
       handoffTriggeredAt: now,
@@ -338,19 +416,16 @@ export const triggerHandoff = mutation({
       updatedAt: now,
     });
 
-    // Create system message
-    const messageContent = "Conversation handed off to support staff.";
-
     await ctx.db.insert("messages", {
       conversationId,
       companyId: conversation.companyId,
       role: "system",
-      content: messageContent,
+      content: "Conversation handed off to support staff.",
       timestamp: now,
       systemMessageType: "handoff",
     });
 
-    return { success: true, handoffAt: now };
+    return { success: true, handoffAt: now, awaitingDepartment: false };
   },
 });
 
@@ -417,6 +492,26 @@ export const supportTakeover = mutation({
     }
 
     await ctx.db.patch(conversationId, updates);
+
+    // Notify customer that an agent has joined
+    if (!isAlreadyParticipating) {
+      const customer = await ctx.db.get(conversation.customerId);
+      if (customer?.notificationsEnabled && customer.whopUserId) {
+        const company = await ctx.db.get(conversation.companyId);
+        if (company?.whopExperienceId) {
+          await ctx.scheduler.runAfter(
+            0,
+            api.notifications.whop.sendHandoffNotification,
+            {
+              customerWhopUserId: customer.whopUserId,
+              agentName: agent.displayName,
+              conversationId,
+              experienceId: company.whopExperienceId,
+            }
+          );
+        }
+      }
+    }
 
     return { success: true, joinedAt: now };
   },
@@ -487,6 +582,23 @@ export const markIssueResolved = mutation({
       status: "resolved",
       updatedAt: now,
     });
+
+    // Notify customer that issue is resolved
+    const customer = await ctx.db.get(conversation.customerId);
+    if (customer?.notificationsEnabled && customer.whopUserId) {
+      const company = await ctx.db.get(conversation.companyId);
+      if (company?.whopExperienceId) {
+        await ctx.scheduler.runAfter(
+          0,
+          api.notifications.whop.sendResolutionNotification,
+          {
+            customerWhopUserId: customer.whopUserId,
+            conversationId,
+            experienceId: company.whopExperienceId,
+          }
+        );
+      }
+    }
 
     return { success: true, resolvedAt: now };
   },

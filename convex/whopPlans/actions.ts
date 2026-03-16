@@ -124,20 +124,18 @@ function getPlanTitle(plan: any) {
 }
 
 function getPlanInitialPrice(plan: any) {
-  // GraphQL API (rawInitialPrice) returns dollars; v1 REST (initial_price) returns cents.
-  if (plan.rawInitialPrice !== undefined && plan.rawInitialPrice !== null) {
-    return Math.round(plan.rawInitialPrice * 100);
-  }
-  const value = plan.initial_price ?? plan.initialPrice;
+  const value =
+    plan.rawInitialPrice ??
+    plan.initial_price ??
+    plan.initialPrice;
   return value !== undefined && value !== null ? Math.round(value) : undefined;
 }
 
 function getPlanRenewalPrice(plan: any) {
-  // GraphQL API (rawRenewalPrice) returns dollars; v1 REST (renewal_price) returns cents.
-  if (plan.rawRenewalPrice !== undefined && plan.rawRenewalPrice !== null) {
-    return Math.round(plan.rawRenewalPrice * 100);
-  }
-  const value = plan.renewal_price ?? plan.renewalPrice;
+  const value =
+    plan.rawRenewalPrice ??
+    plan.renewal_price ??
+    plan.renewalPrice;
   return value !== undefined && value !== null ? Math.round(value) : undefined;
 }
 

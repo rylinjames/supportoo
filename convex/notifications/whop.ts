@@ -30,13 +30,14 @@ export const sendHandoffNotification = action({
     const whopSdk = getWhopSdk();
 
     try {
-      await whopSdk.notifications.sendPushNotification({
+      const result = await whopSdk.notifications.sendPushNotification({
         title: "Agent support is here",
         content: `${agentName} has joined your conversation`,
         userIds: [customerWhopUserId],
         experienceId,
-        restPath: `/chat/${conversationId}`, // Already scoped to experience by Whop
+        restPath: `/chat/${conversationId}`,
       });
+      console.log("Handoff notification result:", JSON.stringify(result));
 
       return { success: true };
     } catch (error) {
@@ -72,13 +73,14 @@ export const sendNewMessageNotification = action({
     const whopSdk = getWhopSdk();
 
     try {
-      await whopSdk.notifications.sendPushNotification({
+      const result = await whopSdk.notifications.sendPushNotification({
         title: `New message from ${senderName}`,
-        content: messagePreview.slice(0, 100), // Limit preview length
+        content: messagePreview.slice(0, 100),
         userIds: [customerWhopUserId],
         experienceId,
         restPath: `/chat/${conversationId}`,
       });
+      console.log("New message notification result:", JSON.stringify(result));
 
       return { success: true };
     } catch (error) {
@@ -106,7 +108,7 @@ export const sendResolutionNotification = action({
     const whopSdk = getWhopSdk();
 
     try {
-      await whopSdk.notifications.sendPushNotification({
+      const result = await whopSdk.notifications.sendPushNotification({
         title: "Issue resolved",
         content:
           "Your issue has been marked as resolved. Feel free to reach out again if you need help!",
@@ -114,6 +116,7 @@ export const sendResolutionNotification = action({
         experienceId,
         restPath: `/chat/${conversationId}`,
       });
+      console.log("Resolution notification result:", JSON.stringify(result));
 
       return { success: true };
     } catch (error) {
@@ -130,7 +133,7 @@ export const sendResolutionNotification = action({
  */
 export const notifyAdmins = action({
   args: {
-    companyTeamId: v.string(), // Whop company team ID
+    companyTeamId: v.string(),
     title: v.string(),
     content: v.string(),
     restPath: v.optional(v.string()),
@@ -139,12 +142,13 @@ export const notifyAdmins = action({
     const whopSdk = getWhopSdk();
 
     try {
-      await whopSdk.notifications.sendPushNotification({
+      const result = await whopSdk.notifications.sendPushNotification({
         title,
         content,
-        companyTeamId, // Send to all team admins
+        companyTeamId,
         restPath,
       });
+      console.log("Admin notification result:", JSON.stringify(result));
 
       return { success: true };
     } catch (error) {
@@ -174,13 +178,14 @@ export const notifySupportAgents = action({
     const whopSdk = getWhopSdk();
 
     try {
-      await whopSdk.notifications.sendPushNotification({
+      const result = await whopSdk.notifications.sendPushNotification({
         title,
         content,
         userIds: agentWhopUserIds,
         experienceId,
         restPath,
       });
+      console.log("Support agents notification result:", JSON.stringify(result));
 
       return { success: true };
     } catch (error) {
@@ -213,14 +218,14 @@ export const sendTeamInvitationNotificationByUserId = action({
     try {
       const roleText = role === "admin" ? "an admin" : "a support agent";
 
-      // Send notification to specific user by their whopUserId
-      await whopSdk.notifications.sendPushNotification({
+      const result = await whopSdk.notifications.sendPushNotification({
         title: `You've been invited to join ${companyName}`,
         content: `${invitedByName} has invited you to join ${companyName} as ${roleText}. Log in to accept your invitation!`,
-        userIds: [whopUserId], // Send to specific user
+        userIds: [whopUserId],
         experienceId,
-        restPath: `/workspace`, // Direct them to workspace
+        restPath: `/workspace`,
       });
+      console.log("Team invitation notification result:", JSON.stringify(result));
 
       return {
         success: true,
@@ -246,12 +251,12 @@ export const sendHandoffRequestNotification = action({
   args: {
     conversationId: v.id("conversations"),
     reason: v.string(),
+    departmentId: v.optional(v.id("departments")),
   },
-  handler: async (ctx, { conversationId, reason }) => {
+  handler: async (ctx, { conversationId, reason, departmentId }) => {
     const whopSdk = getWhopSdk();
 
     try {
-      // Get conversation details
       const conversation = await ctx.runQuery(
         api.conversations.queries.getConversation,
         { conversationId }
@@ -261,7 +266,6 @@ export const sendHandoffRequestNotification = action({
         return { success: false };
       }
 
-      // Get company to find experienceId
       const company = await ctx.runQuery(api.companies.queries.getCompanyById, {
         companyId: conversation.companyId,
       });
@@ -270,16 +274,33 @@ export const sendHandoffRequestNotification = action({
         return { success: false };
       }
 
-      // Get support agents
+      let departmentName: string | undefined;
+
       const supportAgents = await ctx.runQuery(
         api.users.queries.listTeamMembersByCompany,
         { companyId: conversation.companyId }
       );
 
-      const agentWhopUserIds = supportAgents
-        .filter(
-          (agent: any) => agent.role === "support" || agent.role === "admin"
-        )
+      let eligibleAgents = supportAgents.filter(
+        (agent: any) => agent.role === "support" || agent.role === "admin"
+      );
+
+      if (departmentId) {
+        const dept = await ctx.runQuery(api.departments.queries.getDepartment, {
+          departmentId,
+        });
+        departmentName = dept?.name;
+
+        const deptAgents = eligibleAgents.filter(
+          (agent: any) => agent.departmentIds?.includes(departmentId)
+        );
+
+        if (deptAgents.length > 0) {
+          eligibleAgents = deptAgents;
+        }
+      }
+
+      const agentWhopUserIds = eligibleAgents
         .map((agent: any) => agent.whopUserId)
         .filter(Boolean);
 
@@ -288,20 +309,23 @@ export const sendHandoffRequestNotification = action({
         return { success: true };
       }
 
-      // Get customer name
       const customer = await ctx.runQuery(api.users.queries.getUserById, {
         userId: conversation.customerId,
       });
       const customerName = customer?.displayName || "A customer";
 
-      // Send notification
-      await whopSdk.notifications.sendPushNotification({
-        title: "Customer needs help",
+      const title = departmentName
+        ? `[${departmentName}] Customer needs help`
+        : "Customer needs help";
+
+      const result = await whopSdk.notifications.sendPushNotification({
+        title,
         content: `${customerName}: ${reason}`,
         userIds: agentWhopUserIds,
         experienceId: company.whopExperienceId,
         restPath: `/experiences/${company.whopExperienceId}/dashboard/support?conversation=${conversationId}`,
       });
+      console.log("Handoff request notification result:", JSON.stringify(result));
 
       return { success: true };
     } catch (error) {
@@ -335,14 +359,13 @@ export const sendTeamInvitationNotificationByUsername = action({
     try {
       const roleText = role === "admin" ? "an admin" : "a support agent";
 
-      // Try to send notification to the experience (all users in the experience)
-      // This is a workaround since we can't lookup by username
-      await whopSdk.notifications.sendPushNotification({
+      const result = await whopSdk.notifications.sendPushNotification({
         title: `You've been invited to join ${companyName}`,
         content: `${invitedByName} has invited you to join ${companyName} as ${roleText}. Log in to accept your invitation!`,
-        experienceId, // Send to all users in the experience
-        restPath: `/workspace`, // Direct them to workspace
+        experienceId,
+        restPath: `/workspace`,
       });
+      console.log("Team invitation by username notification result:", JSON.stringify(result));
 
       return {
         success: true,

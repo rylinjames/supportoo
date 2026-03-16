@@ -12,7 +12,7 @@ import type { Message } from "@/app/components/support/message-bubble";
 type BackendConversation = {
   _id: Id<"conversations">;
   customerId: Id<"users">;
-  status: "ai_handling" | "available" | "support_staff_handling" | "resolved";
+  status: "ai_handling" | "awaiting_department" | "available" | "support_staff_handling" | "resolved";
   messageCount: number;
   lastMessageAt: number;
   firstMessageAt: number;
@@ -46,11 +46,12 @@ type BackendConversation = {
     initials: string;
     avatar?: string;
   } | null>;
+  departmentName?: string | null;
   messages?: Doc<"messages">[]; // Pre-fetched messages for instant display
 };
 
 // Frontend conversation type (for components)
-export type ConversationStatus = "ai" | "available" | "support" | "resolved";
+export type ConversationStatus = "ai" | "awaiting_department" | "available" | "support" | "resolved";
 export type DeliveryStatus = "sent" | "delivered" | "seen";
 
 export interface Agent {
@@ -76,6 +77,7 @@ export interface Conversation {
   unread: boolean;
   participatingAgents: Agent[];
   handoffReason?: string;
+  departmentName?: string;
   createdAt: Date;
   messages?: Doc<"messages">[]; // Pre-fetched messages for instant display
 }
@@ -89,6 +91,7 @@ export function transformConversation(
   // Map backend status to frontend status
   const statusMap: Record<string, ConversationStatus> = {
     ai_handling: "ai",
+    awaiting_department: "awaiting_department",
     available: "available",
     support_staff_handling: "support",
     resolved: "resolved",
@@ -119,6 +122,7 @@ export function transformConversation(
         avatar: agent!.avatar,
       })),
     handoffReason: backendConv.handoffReason,
+    departmentName: backendConv.departmentName || undefined,
     createdAt: new Date(backendConv.createdAt),
     messages: backendConv.messages, // Pass through pre-fetched messages
   };
@@ -175,6 +179,7 @@ export function formatRelativeTime(date: Date): string {
 export function needsAgentAttention(conversation: Conversation): boolean {
   return (
     conversation.status === "available" ||
+    conversation.status === "awaiting_department" ||
     (conversation.lastMessageFrom === "customer" && conversation.unread)
   );
 }
@@ -186,6 +191,8 @@ export function getStatusBadgeClass(status: ConversationStatus): string {
   switch (status) {
     case "ai":
       return "bg-primary/10 text-primary";
+    case "awaiting_department":
+      return "bg-yellow-500/10 text-yellow-600";
     case "available":
       return "bg-orange/20 text-orange";
     case "support":

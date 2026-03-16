@@ -46,6 +46,7 @@ export const seedInitialData = mutation({
       hasPrioritySupport: false,
       hasCustomTriggers: false,
       hasFileAttachments: false,
+      hasDepartments: false,
 
       // Limits
       maxAgents: 3,
@@ -68,6 +69,7 @@ export const seedInitialData = mutation({
       hasPrioritySupport: true,
       hasCustomTriggers: true,
       hasFileAttachments: true,
+      hasDepartments: true,
 
       // Limits
       maxAgents: 10,
@@ -90,6 +92,7 @@ export const seedInitialData = mutation({
       hasPrioritySupport: true,
       hasCustomTriggers: true,
       hasFileAttachments: true,
+      hasDepartments: true,
 
       // Limits
       maxAgents: -1, // Unlimited

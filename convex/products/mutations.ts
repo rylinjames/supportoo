@@ -213,23 +213,6 @@ export const toggleProductAIInclusion = mutation({
 });
 
 /**
- * Update a product's description (used for v1 headline enrichment)
- */
-export const updateProductDescription = mutation({
-  args: {
-    productId: v.id("products"),
-    description: v.string(),
-  },
-  handler: async (ctx, { productId, description }) => {
-    await ctx.db.patch(productId, {
-      description,
-      updatedAt: Date.now(),
-    });
-    return { success: true };
-  },
-});
-
-/**
  * Exclude specific products from sync (add to blocklist)
  *
  * Products in the blocklist won't be synced from Whop.
@@ -280,41 +263,6 @@ export const excludeProducts = mutation({
       excludedCount: whopProductIds.length,
       deletedCount,
       totalExcluded: newExcluded.length,
-    };
-  },
-});
-
-/**
- * Force cleanup checkout link products for a company.
- *
- * Removes products whose Whop visibility is "quick_link" (checkout links)
- * since those are transient purchase URLs, not real catalog products.
- */
-export const forceCleanupCheckoutLinks = mutation({
-  args: {
-    companyId: v.id("companies"),
-  },
-  handler: async (ctx, { companyId }) => {
-    const allProducts = await ctx.db
-      .query("products")
-      .withIndex("by_company", (q) => q.eq("companyId", companyId))
-      .collect();
-
-    const checkoutLinkProducts = allProducts.filter((product) => {
-      const rawData = product.rawWhopData as any;
-      return rawData?.visibility === "quick_link";
-    });
-
-    const deletedProducts: Array<{ id: string; title: string }> = [];
-    for (const product of checkoutLinkProducts) {
-      deletedProducts.push({ id: product.whopProductId, title: product.title });
-      await ctx.db.delete(product._id);
-    }
-
-    return {
-      deletedCount: checkoutLinkProducts.length,
-      remainingCount: allProducts.length - checkoutLinkProducts.length,
-      deletedProducts,
     };
   },
 });
@@ -397,6 +345,93 @@ export const cleanupArchivedProducts = mutation({
     await Promise.all(deletePromises);
     return {
       deletedCount: productsToDelete.length,
+      deletedProducts: productsToDelete.map(p => ({ id: p.whopProductId, title: p.title })),
+    };
+  },
+});
+
+/**
+ * Force cleanup checkout links and non-regular products
+ *
+ * This mutation removes products that look like checkout links based on their title
+ * (containing "Plan", "Tier", etc.) - use this to clean up old checkout links
+ * that were synced before the product_types: ['regular'] filter was implemented.
+ *
+ * Call this once after deploying the filter to clean up stale data.
+ */
+export const forceCleanupCheckoutLinks = mutation({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, { companyId }) => {
+    const allProducts = await ctx.db
+      .query("products")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+
+    // Patterns that indicate checkout links (not regular products)
+    const checkoutLinkPatterns = [
+      /\bplan\b/i,           // "Pro Plan", "Business Plan", etc.
+      /\btier\b/i,           // "Pro Tier", "Elite Tier", etc.
+      /\bcheckout\b/i,       // "Checkout Link"
+      /\bbooster\b/i,        // "Minute Booster" - these are checkout links
+    ];
+
+    // Known good product patterns (whitelist) - don't delete these
+    const knownGoodPatterns = [
+      /^calloo/i,
+      /^pingoo/i,
+      /^ticketoo/i,
+      /^mailoo/i,
+      /^funneloo/i,
+      /^trackoo/i,
+      /^bookoo/i,
+      /^voice lounge/i,
+      /^geo guesser/i,
+      /^better support/i,
+      /^moderation bot/i,
+    ];
+
+    const productsToDelete = allProducts.filter(product => {
+      const title = product.title || "";
+
+      // If it matches a known good pattern, keep it
+      if (knownGoodPatterns.some(pattern => pattern.test(title))) {
+        return false;
+      }
+
+      // If it matches a checkout link pattern, delete it
+      if (checkoutLinkPatterns.some(pattern => pattern.test(title))) {
+        return true;
+      }
+
+      // Also check rawWhopData for quick_link visibility
+      const rawData = product.rawWhopData as any;
+      if (rawData?.visibility === "quick_link") {
+        return true;
+      }
+
+      return false;
+    });
+
+    console.log(`[forceCleanupCheckoutLinks] Found ${productsToDelete.length} checkout links to delete out of ${allProducts.length} total products`);
+
+    // Log what we're deleting
+    for (const product of productsToDelete) {
+      console.log(`[forceCleanupCheckoutLinks] Deleting checkout link: "${product.title}" (${product.whopProductId})`);
+    }
+
+    // Delete them
+    const deletePromises = productsToDelete.map(product =>
+      ctx.db.delete(product._id)
+    );
+
+    await Promise.all(deletePromises);
+
+    return {
+      totalProducts: allProducts.length,
+      deletedCount: productsToDelete.length,
+      remainingCount: allProducts.length - productsToDelete.length,
       deletedProducts: productsToDelete.map(p => ({ id: p.whopProductId, title: p.title })),
     };
   },

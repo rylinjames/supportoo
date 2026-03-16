@@ -101,23 +101,20 @@ export const getPlansByWhopProductId = query({
 });
 
 /**
- * Get plans for AI context
+ * Get visible plans for AI context
  * Returns plans grouped by Whop product ID for easy AI consumption
- * Includes both visible and hidden plans (only excludes archived)
- * because many plans with real pricing have visibility: "hidden"
  */
 export const getVisiblePlansForAI = query({
   args: {
     companyId: v.id("companies"),
   },
   handler: async (ctx, { companyId }) => {
-    const allPlans = await ctx.db
+    const plans = await ctx.db
       .query("whopPlans")
-      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .withIndex("by_company_visible", (q) =>
+        q.eq("companyId", companyId).eq("isVisible", true)
+      )
       .collect();
-
-    // Include visible + hidden plans, exclude archived
-    const plans = allPlans.filter((p) => p.visibility !== "archived");
 
     // Group plans by whopProductId
     const plansByProduct: Record<

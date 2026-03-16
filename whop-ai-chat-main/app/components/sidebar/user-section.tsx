@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { useTheme } from "next-themes";
 import { useRouter, useParams } from "next/navigation";
 import { useUser } from "@/app/contexts/user-context";
 import {
   ChevronDown,
+  ChevronUp,
   Settings,
   Sun,
   Moon,
@@ -22,18 +24,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 interface UserSectionProps {
   isCollapsed: boolean;
@@ -48,6 +40,8 @@ export function UserSection({
   userName,
   userUsername,
 }: UserSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isThemeOpen, setIsThemeOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const params = useParams();
@@ -56,22 +50,20 @@ export function UserSection({
 
   const handleThemeChange = (newTheme: "light" | "dark" | "system") => {
     setTheme(newTheme);
-
-    // Toast notification
+    setIsThemeOpen(false);
     const themeLabel = newTheme === "system" ? "system default" : newTheme;
     toast.success(`Theme changed to ${themeLabel}`);
+  };
+
+  const handleNavigate = (route: string) => {
+    router.push(`/experiences/${experienceId}${route}`);
+    setIsExpanded(false);
   };
 
   const getThemeIcon = () => {
     if (theme === "light") return <Sun className="h-4 w-4" />;
     if (theme === "dark") return <Moon className="h-4 w-4" />;
     return <Monitor className="h-4 w-4" />;
-  };
-
-  const getThemeLabel = () => {
-    if (theme === "light") return "Light";
-    if (theme === "dark") return "Dark";
-    return "System";
   };
 
   const initials = userName
@@ -81,57 +73,21 @@ export function UserSection({
     .toUpperCase()
     .slice(0, 2);
 
-  const button = (
-    <button
-      className={`
-        flex items-center gap-3 w-full rounded-md px-2 py-2
-        text-foreground hover:bg-muted/50
-        transition-colors duration-200
-        ${isCollapsed ? "justify-center" : ""}
-      `}
-    >
-      {initials ? (
-        <Avatar className="h-8 w-8 flex-shrink-0">
-          <AvatarImage src={userAvatar} />
-          <AvatarFallback className="bg-primary text-primary-foreground text-caption font-medium">
-            {initials}
-          </AvatarFallback>
-        </Avatar>
-      ) : (
-        <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
-      )}
-      {!isCollapsed && (
-        <>
-          <div className="flex-1 text-left min-w-0">
-            {userName ? (
-              <>
-                <p className="text-body-sm font-medium truncate">
-                  {userName.split(" ")[0]}
-                </p>
-                <p className="text-caption text-muted-foreground truncate">
-                  @{userUsername}
-                </p>
-              </>
-            ) : (
-              <>
-                <Skeleton className="h-3.5 w-24" />
-                <Skeleton className="h-3 w-32" />
-              </>
-            )}
-          </div>
-          <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        </>
-      )}
-    </button>
-  );
-
-  // When collapsed, just show dropdown (tooltip on button is enough)
   if (isCollapsed) {
     return (
       <>
         {userName ? (
           <Tooltip>
-            <TooltipTrigger asChild>{button}</TooltipTrigger>
+            <TooltipTrigger asChild>
+              <button className="flex items-center justify-center w-full rounded-md px-2 py-2 text-foreground hover:bg-muted/50 transition-colors duration-200">
+                <Avatar className="h-8 w-8 flex-shrink-0">
+                  <AvatarImage src={userAvatar} />
+                  <AvatarFallback className="bg-primary text-primary-foreground text-caption font-medium">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </TooltipTrigger>
             <TooltipContent side="right">
               <div className="text-left">
                 <p className="text-body-sm font-medium">
@@ -152,25 +108,37 @@ export function UserSection({
 
   return (
     <div className="space-y-2">
-      {/* Agent Availability Status */}
-      {isAgent && !isCollapsed && (
+      {isAgent && (
         <div className="px-2">
           <AgentAvailabilityStatus />
         </div>
       )}
-      
-      {/* User Dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-[220px] z-[80]">
-          <DropdownMenuLabel>
-          <div className="flex flex-col gap-1">
+
+      <div>
+        <button
+          onClick={() => {
+            setIsExpanded(!isExpanded);
+            if (isExpanded) setIsThemeOpen(false);
+          }}
+          className="flex items-center gap-3 w-full rounded-md px-2 py-2 text-foreground hover:bg-muted/50 transition-colors duration-200"
+        >
+          {initials ? (
+            <Avatar className="h-8 w-8 flex-shrink-0">
+              <AvatarImage src={userAvatar} />
+              <AvatarFallback className="bg-primary text-primary-foreground text-caption font-medium">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+          ) : (
+            <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
+          )}
+          <div className="flex-1 text-left min-w-0">
             {userName ? (
               <>
-                <p className="text-label font-medium">
+                <p className="text-body-sm font-medium truncate">
                   {userName.split(" ")[0]}
                 </p>
-                <p className="text-caption text-muted-foreground font-normal">
+                <p className="text-caption text-muted-foreground truncate">
                   @{userUsername}
                 </p>
               </>
@@ -181,76 +149,106 @@ export function UserSection({
               </>
             )}
           </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {/* Billing - Admin only */}
-        {getCurrentRole() === "admin" && (
-          <DropdownMenuItem
-            onClick={() => {
-              router.push(`/experiences/${experienceId}/billing`);
-            }}
-          >
-            <CreditCard className="h-4 w-4" />
-            Billing
-          </DropdownMenuItem>
-        )}
+          {isExpanded ? (
+            <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          )}
+        </button>
 
-        <DropdownMenuItem
-          onClick={() => {
-            router.push(`/experiences/${experienceId}/settings`);
-          }}
+        <div
+          className={cn(
+            "overflow-hidden transition-all duration-200",
+            isExpanded ? "max-h-[400px] opacity-100" : "max-h-0 opacity-0"
+          )}
         >
-          <Settings className="h-4 w-4" />
-          Settings
-        </DropdownMenuItem>
+          <div className="space-y-0.5 pt-1">
+            {getCurrentRole() === "admin" && (
+              <button
+                onClick={() => handleNavigate("/billing")}
+                className="flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-body-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
+              >
+                <CreditCard className="h-4 w-4" />
+                Billing
+              </button>
+            )}
+            <button
+              onClick={() => handleNavigate("/settings")}
+              className="flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-body-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </button>
+            <button
+              onClick={() => handleNavigate("/help")}
+              className="flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-body-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
+            >
+              <HelpCircle className="h-4 w-4" />
+              Help & Support
+            </button>
+            <button
+              onClick={() => handleNavigate("/more-apps")}
+              className="flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-body-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
+            >
+              <Grid className="h-4 w-4" />
+              More Apps
+            </button>
 
-        <DropdownMenuSeparator />
-
-        {/* Help & Support */}
-        <DropdownMenuItem
-          onClick={() => {
-            router.push(`/experiences/${experienceId}/help`);
-          }}
-        >
-          <HelpCircle className="h-4 w-4" />
-          Help & Support
-        </DropdownMenuItem>
-
-        {/* More Apps */}
-        <DropdownMenuItem
-          onClick={() => {
-            router.push(`/experiences/${experienceId}/more-apps`);
-          }}
-        >
-          <Grid className="h-4 w-4" />
-          More Apps
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-
-        {/* Theme Submenu */}
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            {getThemeIcon()}
-            Theme
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={() => handleThemeChange("light")}>
-              <Sun className="h-4 w-4" />
-              Light
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleThemeChange("dark")}>
-              <Moon className="h-4 w-4" />
-              Dark
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleThemeChange("system")}>
-              <Monitor className="h-4 w-4" />
-              System
-            </DropdownMenuItem>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <div>
+              <button
+                onClick={() => setIsThemeOpen(!isThemeOpen)}
+                className="flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-body-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
+              >
+                {getThemeIcon()}
+                Theme
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 ml-auto transition-transform duration-200",
+                    isThemeOpen && "rotate-180"
+                  )}
+                />
+              </button>
+              <div
+                className={cn(
+                  "overflow-hidden transition-all duration-200 pl-6",
+                  isThemeOpen ? "max-h-[120px] opacity-100" : "max-h-0 opacity-0"
+                )}
+              >
+                <button
+                  onClick={() => handleThemeChange("light")}
+                  className={cn(
+                    "flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-body-sm transition-colors",
+                    theme === "light" ? "text-foreground font-medium" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  )}
+                >
+                  <Sun className="h-4 w-4" />
+                  Light
+                </button>
+                <button
+                  onClick={() => handleThemeChange("dark")}
+                  className={cn(
+                    "flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-body-sm transition-colors",
+                    theme === "dark" ? "text-foreground font-medium" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  )}
+                >
+                  <Moon className="h-4 w-4" />
+                  Dark
+                </button>
+                <button
+                  onClick={() => handleThemeChange("system")}
+                  className={cn(
+                    "flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-body-sm transition-colors",
+                    theme === "system" ? "text-foreground font-medium" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  )}
+                >
+                  <Monitor className="h-4 w-4" />
+                  System
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -51,12 +51,20 @@ export const getCompanyByExperienceId = query({
     experienceId: v.string(),
   },
   handler: async (ctx, { experienceId }) => {
-    return await ctx.db
+    // First check the primary experience ID (indexed)
+    const byPrimary = await ctx.db
       .query("companies")
       .withIndex("by_whop_experience_id", (q) =>
         q.eq("whopExperienceId", experienceId)
       )
       .first();
+    if (byPrimary) return byPrimary;
+
+    // Fall back to checking the experience IDs array (full scan but rare)
+    const allCompanies = await ctx.db.query("companies").collect();
+    return allCompanies.find(
+      (c) => c.whopExperienceIds?.includes(experienceId)
+    ) ?? null;
   },
 });
 

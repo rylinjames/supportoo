@@ -29,6 +29,7 @@ export const updateCompanyName = mutation({
 
 /**
  * Update experience ID for an existing company
+ * Adds to the array of known experience IDs (supports multiple installations)
  */
 export const updateExperienceId = mutation({
   args: {
@@ -36,8 +37,17 @@ export const updateExperienceId = mutation({
     experienceId: v.string(),
   },
   handler: async (ctx, { companyId, experienceId }) => {
+    const company = await ctx.db.get(companyId);
+    if (!company) return;
+
+    const existingIds = company.whopExperienceIds ?? [];
+    const updatedIds = existingIds.includes(experienceId)
+      ? existingIds
+      : [...existingIds, experienceId];
+
     await ctx.db.patch(companyId, {
       whopExperienceId: experienceId,
+      whopExperienceIds: updatedIds,
       updatedAt: Date.now(),
     });
   },

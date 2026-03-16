@@ -47,7 +47,8 @@ export default defineSchema({
   companies: defineTable({
     // Core company info
     whopCompanyId: v.string(), // Whop's company ID
-    whopExperienceId: v.optional(v.string()), // Experience ID for this company's app installation
+    whopExperienceId: v.optional(v.string()), // Primary experience ID (kept for backwards compat)
+    whopExperienceIds: v.optional(v.array(v.string())), // All known experience IDs for this company
     whopCompanyRoute: v.optional(v.string()), // Company slug/route (stable across reinstalls)
     name: v.string(),
     domain: v.optional(v.string()),

@@ -345,7 +345,7 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
           )}
 
           {/* Profile Section at BOTTOM */}
-          <div className="px-3 pb-3">
+          <div className="px-3 pb-3 overflow-y-auto max-h-[50vh]">
             <button
               onClick={() => setIsProfileExpanded(!isProfileExpanded)}
               className="flex items-center gap-3 w-full rounded-md px-2 py-2 text-foreground hover:bg-muted/50 transition-colors duration-200"

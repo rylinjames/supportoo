@@ -216,8 +216,18 @@ const InnerLayout = ({ children }: LayoutProps) => {
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-screen text-body-sm text-muted-foreground">
-        {error}
+      <div className="flex flex-col gap-4 justify-center items-center h-screen text-body-sm text-muted-foreground">
+        <p>{error}</p>
+        <button
+          onClick={() => {
+            setError(undefined);
+            setIsLoading(true);
+            window.location.reload();
+          }}
+          className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-body-sm hover:opacity-90 transition-opacity"
+        >
+          Retry
+        </button>
       </div>
     );
   }

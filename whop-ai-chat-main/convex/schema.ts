@@ -48,6 +48,7 @@ export default defineSchema({
     // Core company info
     whopCompanyId: v.string(), // Whop's company ID
     whopExperienceId: v.optional(v.string()), // Experience ID for this company's app installation
+    whopCompanyRoute: v.optional(v.string()), // Company slug/route (stable across reinstalls)
     name: v.string(),
     domain: v.optional(v.string()),
     timezone: v.string(),
@@ -121,6 +122,7 @@ export default defineSchema({
   })
     .index("by_whop_company_id", ["whopCompanyId"])
     .index("by_whop_experience_id", ["whopExperienceId"])
+    .index("by_whop_company_route", ["whopCompanyRoute"])
     .index("by_whop_membership_id", ["whopMembershipId"])
     .index("by_plan", ["planId"])
     .index("by_billing_status", ["billingStatus"]),

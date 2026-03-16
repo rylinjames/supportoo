@@ -44,6 +44,22 @@ export const updateExperienceId = mutation({
 });
 
 /**
+ * Update company route (slug) for an existing company
+ */
+export const updateCompanyRoute = mutation({
+  args: {
+    companyId: v.id("companies"),
+    companyRoute: v.string(),
+  },
+  handler: async (ctx, { companyId, companyRoute }) => {
+    await ctx.db.patch(companyId, {
+      whopCompanyRoute: companyRoute,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
  * Create a new company
  *
  * Called when the first admin from a company accesses the app.

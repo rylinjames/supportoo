@@ -490,7 +490,29 @@ export const onboardUser = action({
         console.log(`[onboardUser] Found company by experienceId: ${company._id} (${company.name})`);
         whopCompanyId = company.whopCompanyId;
         companyName = company.name;
-      } else if (companyIdFromHeader) {
+      } else if (companyRoute) {
+        // Step 2.1: Experience ID not found — try company route (stable across reinstalls)
+        console.log(`[onboardUser] Experience ID not found, trying company route: ${companyRoute}`);
+        company = await ctx.runQuery(
+          api.companies.queries.getCompanyByRoute,
+          { companyRoute }
+        );
+
+        if (company) {
+          console.log(`[onboardUser] Found company by route: ${company._id} (${company.name})`);
+          whopCompanyId = company.whopCompanyId;
+          companyName = company.name;
+
+          // Update the stale experience ID
+          console.log(`[onboardUser] Updating experienceId from ${company.whopExperienceId} to ${experienceId} (via route lookup)`);
+          await ctx.runMutation(api.companies.mutations.updateExperienceId, {
+            companyId: company._id,
+            experienceId,
+          });
+        }
+      }
+
+      if (!company && companyIdFromHeader) {
         // Step 2.5: Use company ID from header if available
         // SECURITY: Verify the header value against authoritative API before trusting it
         console.log(`[onboardUser] Verifying company ID from header: ${companyIdFromHeader}`);
@@ -542,9 +564,11 @@ export const onboardUser = action({
             // Don't set whopCompanyId - let it fall through to other methods
           }
         }
-      } else if (companyRoute) {
-        // Step 2.6: Use company route from iframe SDK to look up company
-        console.log(`[onboardUser] Looking up company by route: ${companyRoute}`);
+      }
+
+      if (!company && !whopCompanyId && companyRoute) {
+        // Step 2.6: Use company route from iframe SDK to look up company via Whop API
+        console.log(`[onboardUser] Looking up company by route via API: ${companyRoute}`);
         const apiKey = process.env.WHOP_API_KEY;
 
         // Try to get company by route/slug using Whop API
@@ -779,6 +803,15 @@ export const onboardUser = action({
 
       if (!company) {
         throw new Error("Failed to create company");
+      }
+
+      // Step 4.1: Save company route if available (stable identifier for reinstalls)
+      if (companyRoute && company.whopCompanyRoute !== companyRoute) {
+        console.log(`[onboardUser] Saving company route: ${companyRoute}`);
+        await ctx.runMutation(api.companies.mutations.updateCompanyRoute, {
+          companyId: company._id,
+          companyRoute,
+        });
       }
 
       // Step 4.5: Auto-fix company name on EVERY login

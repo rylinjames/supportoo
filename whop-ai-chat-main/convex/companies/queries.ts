@@ -61,6 +61,24 @@ export const getCompanyByExperienceId = query({
 });
 
 // ============================================================================
+// GET COMPANY BY ROUTE (stable across reinstalls)
+// ============================================================================
+
+export const getCompanyByRoute = query({
+  args: {
+    companyRoute: v.string(),
+  },
+  handler: async (ctx, { companyRoute }) => {
+    return await ctx.db
+      .query("companies")
+      .withIndex("by_whop_company_route", (q) =>
+        q.eq("whopCompanyRoute", companyRoute)
+      )
+      .first();
+  },
+});
+
+// ============================================================================
 // GET COMPANY BY ID
 // ============================================================================
 

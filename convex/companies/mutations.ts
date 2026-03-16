@@ -54,6 +54,24 @@ export const updateExperienceId = mutation({
 });
 
 /**
+ * Set the full list of experience IDs for a company (admin utility)
+ */
+export const setExperienceIds = mutation({
+  args: {
+    companyId: v.id("companies"),
+    experienceIds: v.array(v.string()),
+    primaryExperienceId: v.string(),
+  },
+  handler: async (ctx, { companyId, experienceIds, primaryExperienceId }) => {
+    await ctx.db.patch(companyId, {
+      whopExperienceId: primaryExperienceId,
+      whopExperienceIds: experienceIds,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
  * Update company route (slug) for an existing company
  */
 export const updateCompanyRoute = mutation({

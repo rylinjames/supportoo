@@ -150,9 +150,50 @@ async function getCompanyFromExperience(
     throw new Error("WHOP_API_KEY environment variable is required");
   }
 
-  // METHOD 1 (AUTHORITATIVE): Use /v5/app/experiences to get the correct company
-  // This endpoint returns ALL experiences for our app with their company_id
-  // This is the ONLY reliable way to determine which company owns an experience
+  // METHOD 1 (AUTHORITATIVE): GET /api/v1/experiences/{id}
+  // This is the documented Whop endpoint that returns company.id directly
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[getCompanyFromExperience] Trying /v1/experiences/${experienceId} (attempt ${attempt}/${maxRetries})...`);
+      const v1Response = await fetch(`https://api.whop.com/api/v1/experiences/${experienceId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (v1Response.ok) {
+        const v1Data = await v1Response.json();
+        console.log(`[getCompanyFromExperience] v1 API response:`, JSON.stringify(v1Data, null, 2));
+
+        const companyId = v1Data.company?.id || v1Data.company_id;
+        const companyName = v1Data.company?.title || v1Data.company?.name || v1Data.name || "My Company";
+        if (companyId) {
+          console.log(`[getCompanyFromExperience] ✅ Found company from /v1/experiences: ${companyId} (${companyName})`);
+          return { whopCompanyId: companyId, companyName };
+        }
+      } else if (v1Response.status === 404 && attempt < maxRetries) {
+        // Experience might not be propagated yet — wait and retry
+        console.log(`[getCompanyFromExperience] /v1/experiences returned 404, retrying in ${attempt * 2}s...`);
+        await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+        continue;
+      } else {
+        console.log(`[getCompanyFromExperience] /v1/experiences returned ${v1Response.status}`);
+      }
+    } catch (e) {
+      console.log(`[getCompanyFromExperience] /v1/experiences attempt ${attempt} failed:`, e);
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+        continue;
+      }
+    }
+    break;
+  }
+
+  // METHOD 2: Fallback to /v5/app/experiences list
   try {
     console.log(`[getCompanyFromExperience] Trying /v5/app/experiences for ${experienceId}...`);
     const appExperiencesResponse = await fetch(`https://api.whop.com/api/v5/app/experiences`, {
@@ -167,54 +208,20 @@ async function getCompanyFromExperience(
       const appExperiencesData = await appExperiencesResponse.json();
       const experiences = appExperiencesData.data || [];
 
-      // Find the experience that matches our experienceId
       const matchingExperience = experiences.find((exp: any) => exp.id === experienceId);
 
-      if (matchingExperience && matchingExperience.company_id) {
-        console.log(`[getCompanyFromExperience] ✅ Found company from /v5/app/experiences: ${matchingExperience.company_id}`);
-        // Fetch the actual business/store name instead of using experience name
-        const businessName = await fetchWhopBusinessName(matchingExperience.company_id);
-        return {
-          whopCompanyId: matchingExperience.company_id,
-          companyName: businessName || matchingExperience.name || "My Company",
-        };
-      } else {
-        console.log(`[getCompanyFromExperience] Experience ${experienceId} not found in app experiences list`);
-      }
-    } else {
-      console.log(`[getCompanyFromExperience] /v5/app/experiences returned ${appExperiencesResponse.status}`);
-    }
-  } catch (e) {
-    console.log(`[getCompanyFromExperience] /v5/app/experiences failed:`, e);
-  }
-
-  // METHOD 2: Try v5 API for specific experience
-  try {
-    console.log(`[getCompanyFromExperience] Trying /v5/experiences/${experienceId}...`);
-    const v5Response = await fetch(`https://api.whop.com/api/v5/experiences/${experienceId}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'application/json',
-      }
-    });
-
-    if (v5Response.ok) {
-      const v5Data = await v5Response.json();
-      console.log(`[getCompanyFromExperience] v5 API response:`, JSON.stringify(v5Data, null, 2));
-
-      const companyId = v5Data.company_id || v5Data.company?.id || v5Data.companyId;
-      if (companyId) {
-        // Fetch the actual business/store name instead of using experience name
+      if (matchingExperience && (matchingExperience.company_id || matchingExperience.company?.id)) {
+        const companyId = matchingExperience.company_id || matchingExperience.company?.id;
+        console.log(`[getCompanyFromExperience] ✅ Found company from /v5/app/experiences: ${companyId}`);
         const businessName = await fetchWhopBusinessName(companyId);
         return {
           whopCompanyId: companyId,
-          companyName: businessName || v5Data.company?.title || v5Data.company?.name || v5Data.name || "My Company",
+          companyName: businessName || matchingExperience.name || "My Company",
         };
       }
     }
   } catch (e) {
-    console.log(`[getCompanyFromExperience] v5 API failed:`, e);
+    console.log(`[getCompanyFromExperience] /v5/app/experiences failed:`, e);
   }
 
   // METHOD 3: Try the apps/experiences endpoint

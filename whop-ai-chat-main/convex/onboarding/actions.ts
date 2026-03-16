@@ -506,8 +506,9 @@ export const onboardUser = action({
           console.log(`[onboardUser] Header company verified (exists in DB): ${company._id}`);
           whopCompanyId = companyIdFromHeader;
           companyName = company.name;
-          // Update experienceId mapping if not set
-          if (!company.whopExperienceId) {
+          // Update experienceId if it changed (handles app reinstalls)
+          if (company.whopExperienceId !== experienceId) {
+            console.log(`[onboardUser] Updating stale experienceId from ${company.whopExperienceId} to ${experienceId} (via header)`);
             await ctx.runMutation(api.companies.mutations.updateExperienceId, {
               companyId: company._id,
               experienceId,
@@ -577,8 +578,9 @@ export const onboardUser = action({
 
               if (company) {
                 companyName = company.name;
-                // Update experienceId mapping if not set
-                if (!company.whopExperienceId) {
+                // Update experienceId if it changed (handles app reinstalls)
+                if (company.whopExperienceId !== experienceId) {
+                  console.log(`[onboardUser] Updating stale experienceId from ${company.whopExperienceId} to ${experienceId} (via route)`);
                   await ctx.runMutation(api.companies.mutations.updateExperienceId, {
                     companyId: company._id,
                     experienceId,
@@ -604,7 +606,8 @@ export const onboardUser = action({
 
               if (company) {
                 companyName = company.name;
-                if (!company.whopExperienceId) {
+                if (company.whopExperienceId !== experienceId) {
+                  console.log(`[onboardUser] Updating stale experienceId from ${company.whopExperienceId} to ${experienceId} (via user token)`);
                   await ctx.runMutation(api.companies.mutations.updateExperienceId, {
                     companyId: company._id,
                     experienceId,
@@ -637,8 +640,9 @@ export const onboardUser = action({
             { whopCompanyId }
           );
 
-          // Update experienceId if company exists but didn't have it
-          if (company && !company.whopExperienceId) {
+          // Update experienceId if company exists (handles reinstalls where experienceId changed)
+          if (company && company.whopExperienceId !== experienceId) {
+            console.log(`[onboardUser] Updating stale experienceId from ${company.whopExperienceId} to ${experienceId}`);
             await ctx.runMutation(api.companies.mutations.updateExperienceId, {
               companyId: company._id,
               experienceId,
@@ -686,6 +690,53 @@ export const onboardUser = action({
             }
           } catch (experiencesError) {
             console.error(`[onboardUser] Experiences list lookup also failed:`, experiencesError);
+          }
+
+          // Step 3.5: Last resort - check if user belongs to exactly ONE company in our DB
+          // This handles reinstalls where Whop API is slow to propagate the new experience
+          // ONLY safe when user has a single company — with multiple, we can't know which one
+          if (!whopCompanyId) {
+            console.log(`[onboardUser] All API methods failed, checking user's existing companies in DB...`);
+            try {
+              const existingUser = await ctx.runQuery(
+                api.users.queries.getUserByWhopUserId,
+                { whopUserId }
+              );
+
+              if (existingUser) {
+                const userCompanies = await ctx.runQuery(
+                  api.users.multi_company_helpers.getUserCompanies,
+                  { userId: existingUser._id }
+                );
+
+                if (userCompanies && userCompanies.length === 1) {
+                  const onlyCompany = userCompanies[0];
+                  console.log(`[onboardUser] User has exactly 1 company: ${onlyCompany.companyName} (${onlyCompany.companyId})`);
+
+                  company = await ctx.runQuery(
+                    api.companies.queries.getCompanyById,
+                    { companyId: onlyCompany.companyId as Id<"companies"> }
+                  );
+
+                  if (company) {
+                    whopCompanyId = company.whopCompanyId;
+                    companyName = company.name;
+                    console.log(`[onboardUser] Matched to existing company via user membership: ${whopCompanyId} (${companyName})`);
+
+                    // Update experienceId to the new one
+                    console.log(`[onboardUser] Updating experienceId to ${experienceId} for reinstalled app`);
+                    await ctx.runMutation(api.companies.mutations.updateExperienceId, {
+                      companyId: company._id,
+                      experienceId,
+                    });
+                  }
+                } else if (userCompanies && userCompanies.length > 1) {
+                  console.log(`[onboardUser] User has ${userCompanies.length} companies — cannot auto-match, need Whop API`);
+                }
+              }
+            } catch (userLookupError) {
+              console.error(`[onboardUser] User company lookup failed:`, userLookupError);
+            }
           }
 
           // If still no company, show helpful error with the experience ID for manual setup

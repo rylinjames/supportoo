@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import { usePathname, useSearchParams, useRouter, useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   Eye,
   ChevronDown,
+  ChevronUp,
   MessageSquare,
   LucideIcon,
   Sparkles,
@@ -20,9 +21,13 @@ import {
   X,
   CreditCard,
   Settings,
+  HelpCircle,
+  Grid,
 } from "lucide-react";
 import { Separator } from "../../../components/ui/separator";
-import { UserSection } from "./user-section";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AgentAvailabilityStatus } from "../support/agent-availability-status";
 import { CompanySwitcher } from "../common/company-switcher";
 import { useUser } from "@/app/contexts/user-context";
 import { cn } from "@/lib/utils";
@@ -113,13 +118,18 @@ interface MobileSidebarProps {
 
 export function MobileSidebar({ userType, user }: MobileSidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isProfileExpanded, setIsProfileExpanded] = useState(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const params = useParams();
+  const experienceId = params?.experienceId as string;
   const { userData, getCurrentRole } = useUser();
 
   const currentRole = getCurrentRole();
   const effectiveUserType = currentRole || userType;
+  const isAgent = effectiveUserType === "support" || effectiveUserType === "admin";
+  const userName = user?.user.displayName;
 
   // Close sidebar on escape key
   useEffect(() => {
@@ -229,24 +239,12 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
       ],
     };
 
-    const accountSection: NavSection = {
-      id: "account",
-      label: "Account",
-      defaultExpanded: true,
-      items: [
-        ...(effectiveUserType === "admin"
-          ? [{ id: "billing", icon: CreditCard, label: "Billing", route: "/billing" }]
-          : []),
-        { id: "settings", icon: Settings, label: "Settings", route: "/settings" },
-      ],
-    };
-
     if (effectiveUserType === "admin") {
-      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection, accountSection];
+      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection];
     }
 
     if (effectiveUserType === "manager") {
-      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection, accountSection];
+      return [supportTicketsSection, aiStudioSection, workspaceSection, analyticsSection];
     }
 
     if (effectiveUserType === "viewer") {
@@ -339,14 +337,117 @@ export function MobileSidebar({ userType, user }: MobileSidebarProps) {
             </>
           )}
 
-          {/* User Section at BOTTOM */}
-          <div className="p-3">
-            <UserSection
-              isCollapsed={false}
-              userAvatar={user?.user.avatarUrl}
-              userName={user?.user.displayName}
-              userUsername={user?.user.whopUsername}
-            />
+          {/* Agent Availability Status */}
+          {isAgent && (
+            <div className="px-5 py-3">
+              <AgentAvailabilityStatus />
+            </div>
+          )}
+
+          {/* Profile Section at BOTTOM */}
+          <div className="px-3 pb-3">
+            <button
+              onClick={() => setIsProfileExpanded(!isProfileExpanded)}
+              className="flex items-center gap-3 w-full rounded-md px-2 py-2 text-foreground hover:bg-muted/50 transition-colors duration-200"
+            >
+              {userName ? (
+                <Avatar className="h-8 w-8 flex-shrink-0">
+                  <AvatarImage src={user?.user.avatarUrl} />
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs font-medium">
+                    {userName
+                      .split(" ")
+                      .map((n: string) => n[0])
+                      .join("")
+                      .toUpperCase()
+                      .slice(0, 2)}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
+              )}
+              <div className="flex-1 text-left min-w-0">
+                {userName ? (
+                  <>
+                    <p className="text-[13px] font-medium truncate">
+                      {userName.split(" ")[0]}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {user?.user.whopUsername}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Skeleton className="h-3.5 w-24" />
+                    <Skeleton className="h-3 w-32" />
+                  </>
+                )}
+              </div>
+              {isProfileExpanded ? (
+                <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              )}
+            </button>
+
+            <div
+              className={cn(
+                "overflow-hidden transition-all duration-200",
+                isProfileExpanded ? "max-h-[300px] opacity-100" : "max-h-0 opacity-0"
+              )}
+            >
+              <div className="space-y-0.5 pt-1">
+                {effectiveUserType === "admin" && (
+                  <button
+                    onClick={() => handleNavigate("/billing")}
+                    className={cn(
+                      "flex items-center gap-3 w-full rounded-lg px-3 py-2.5 transition-all duration-200 ease-out",
+                      isActiveRoute("/billing")
+                        ? "bg-muted text-foreground font-medium"
+                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                    )}
+                  >
+                    <CreditCard className={cn("h-[18px] w-[18px]", isActiveRoute("/billing") && "text-primary")} />
+                    <span className="text-[13px] leading-none">Billing</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => handleNavigate("/settings")}
+                  className={cn(
+                    "flex items-center gap-3 w-full rounded-lg px-3 py-2.5 transition-all duration-200 ease-out",
+                    isActiveRoute("/settings")
+                      ? "bg-muted text-foreground font-medium"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  )}
+                >
+                  <Settings className={cn("h-[18px] w-[18px]", isActiveRoute("/settings") && "text-primary")} />
+                  <span className="text-[13px] leading-none">Settings</span>
+                </button>
+                <button
+                  onClick={() => handleNavigate("/help")}
+                  className={cn(
+                    "flex items-center gap-3 w-full rounded-lg px-3 py-2.5 transition-all duration-200 ease-out",
+                    isActiveRoute("/help")
+                      ? "bg-muted text-foreground font-medium"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  )}
+                >
+                  <HelpCircle className={cn("h-[18px] w-[18px]", isActiveRoute("/help") && "text-primary")} />
+                  <span className="text-[13px] leading-none">Help & Support</span>
+                </button>
+                <button
+                  onClick={() => handleNavigate("/more-apps")}
+                  className={cn(
+                    "flex items-center gap-3 w-full rounded-lg px-3 py-2.5 transition-all duration-200 ease-out",
+                    isActiveRoute("/more-apps")
+                      ? "bg-muted text-foreground font-medium"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  )}
+                >
+                  <Grid className={cn("h-[18px] w-[18px]", isActiveRoute("/more-apps") && "text-primary")} />
+                  <span className="text-[13px] leading-none">More Apps</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

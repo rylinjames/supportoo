@@ -388,6 +388,37 @@ async function checkWhopAccessLevel(
       if (accessCheck.has_access) {
         return accessCheck.access_level; // "admin" or "customer"
       }
+
+      // checkAccess returned no_access — check if user is the company owner
+      // Owners may not be in the authorized_users list on brand new Whops
+      console.log(`[checkWhopAccessLevel] no_access returned, checking company ownership...`);
+      try {
+        const apiKey = process.env.WHOP_API_KEY;
+        const companyResponse = await fetch(
+          `https://api.whop.com/api/v1/companies/${whopCompanyId}`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Accept': 'application/json',
+            },
+            signal: AbortSignal.timeout(5000),
+          }
+        );
+
+        if (companyResponse.ok) {
+          const companyData = await companyResponse.json();
+          const ownerId = companyData.owner_user?.id;
+          if (ownerId === whopUserId) {
+            console.log(`[checkWhopAccessLevel] User ${whopUserId} is the company owner — granting admin`);
+            return "admin";
+          }
+          console.log(`[checkWhopAccessLevel] User ${whopUserId} is not the owner (owner: ${ownerId})`);
+        }
+      } catch (ownerCheckError) {
+        console.warn(`[checkWhopAccessLevel] Owner check failed:`, ownerCheckError);
+      }
+
       return "no_access";
     } catch (error) {
       console.warn(`[checkWhopAccessLevel] Attempt ${attempt + 1}/${maxRetries} failed:`, error);

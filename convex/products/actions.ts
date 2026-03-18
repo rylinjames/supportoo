@@ -477,6 +477,7 @@ async function syncSingleProduct(
     whopProductId: whopProduct.id,
     whopCompanyId,
     title: whopProduct.title,
+    headline: whopProduct.headline || undefined,
     description,
     price: undefined,
     currency: "USD",

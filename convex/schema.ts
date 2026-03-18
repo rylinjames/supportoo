@@ -603,6 +603,7 @@ export default defineSchema({
     
     // Product details
     title: v.string(),
+    headline: v.optional(v.string()),
     description: v.optional(v.string()),
     price: v.optional(v.number()), // Price in cents
     currency: v.optional(v.string()), // Currency code (USD, EUR, etc.)

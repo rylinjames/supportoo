@@ -82,6 +82,8 @@ function buildInstructions(company: {
     
   if (companyContext.trim() !== "") {
     instructions = `# MANDATORY CONTEXT - YOU MUST ALWAYS FOLLOW THIS\n\n${companyContext}\n\nThis context defines everything about your role, identity, and the company you represent. ALL your responses must be consistent with this context. Use this information to:\n- Answer questions about the company, products, and services\n- Maintain consistent identity and brand voice\n- Provide accurate company-specific information\n- Guide customers based on company policies and offerings\n\nNever contradict this context. Always respond as a representative of this company.\n\n`;
+  } else {
+    instructions = `# IMPORTANT: NO COMPANY CONTEXT PROVIDED\n\nNo company-specific information has been configured. Do NOT guess or infer what this company does based on its name. If asked about the company, its products, or services, say: "The team hasn't added their company details yet. For specific information, I'd recommend checking their Whop page." Only answer questions about products that are explicitly listed in your context.\n\n`;
   }
 
   // ============================================================================
@@ -102,8 +104,8 @@ You MUST NEVER mention any of the following technical terms or concepts to custo
 - DO NOT mention that the search failed or found nothing
 - DO NOT say "I couldn't find information" or "no files uploaded"
 - DO NOT apologize for missing information
-- INSTEAD: Act as if you have the information from the company context provided
-- Simply answer the question naturally based on company context or general knowledge
+- INSTEAD: Answer based ONLY on the company context and product information provided
+- If no company context exists, say the team hasn't added their details yet
 - Use phrases like: "I'd be happy to help with that!" or "Let me help you with that question."
 
 **Examples of FORBIDDEN responses:**

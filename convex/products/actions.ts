@@ -29,6 +29,7 @@ type NormalizedProduct = {
   companyId: string;
   title: string;
   description: string;
+  headline?: string;
   visibility: string;
   businessType?: string;
   category?: string;
@@ -81,10 +82,10 @@ function normalizeAccessPass(accessPass: any, companyId: string): NormalizedProd
     title: accessPass.title || accessPass.name || "Untitled Product",
     description: pickDescription(
       accessPass.shortenedDescription,
-      accessPass.headline,
       accessPass.creatorPitch,
       accessPass.description
     ),
+    headline: accessPass.headline,
     visibility: accessPass.visibility || "hidden",
     businessType: accessPass.type || accessPass.businessType,
     category: accessPass.category,

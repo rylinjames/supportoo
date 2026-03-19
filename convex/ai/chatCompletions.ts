@@ -801,6 +801,15 @@ ${company.aiSystemPrompt || ""}`;
             conversationId,
             reason: handoffReason,
           });
+          // Notify agents about the handoff
+          try {
+            await ctx.runAction(api.notifications.whop.sendHandoffRequestNotification, {
+              conversationId,
+              reason: handoffReason,
+            });
+          } catch (notifError) {
+            console.warn("Failed to send handoff notification:", notifError);
+          }
           // Handoff succeeded — don't send the AI response (the handoff system
           // message is the only thing the customer should see)
           aiMessageCreated = true;

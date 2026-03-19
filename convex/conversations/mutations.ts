@@ -201,6 +201,16 @@ export const requestHumanSupport = mutation({
           systemMessageType: "department_prompt",
         });
 
+        // Notify agents that a customer is waiting for routing
+        await ctx.scheduler.runAfter(
+          0,
+          api.notifications.whop.sendHandoffRequestNotification,
+          {
+            conversationId,
+            reason: "Customer requested human support (selecting department)",
+          }
+        );
+
         return { success: true };
       }
     }
@@ -404,6 +414,16 @@ export const triggerHandoff = mutation({
           systemMessageType: "department_prompt",
         });
 
+        // Notify agents that a customer is waiting for routing
+        await ctx.scheduler.runAfter(
+          0,
+          api.notifications.whop.sendHandoffRequestNotification,
+          {
+            conversationId,
+            reason: reason || "Handoff triggered",
+          }
+        );
+
         return { success: true, handoffAt: now, awaitingDepartment: true };
       }
     }
@@ -424,6 +444,16 @@ export const triggerHandoff = mutation({
       timestamp: now,
       systemMessageType: "handoff",
     });
+
+    // Notify agents
+    await ctx.scheduler.runAfter(
+      0,
+      api.notifications.whop.sendHandoffRequestNotification,
+      {
+        conversationId,
+        reason: reason || "Handoff triggered",
+      }
+    );
 
     return { success: true, handoffAt: now, awaitingDepartment: false };
   },

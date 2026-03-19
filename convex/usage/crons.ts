@@ -1,9 +1,47 @@
 import { internalMutation } from "../_generated/server";
 
 /**
- * USAGE AGGREGATION CRON JOBS
- * Daily aggregation of hourly usage records
+ * USAGE CRON JOBS
+ * Usage reset and daily aggregation
  */
+
+/**
+ * Reset expired usage counters
+ *
+ * Runs hourly to check all companies and reset aiResponsesThisMonth
+ * for any company whose aiResponsesResetAt has passed. This is critical
+ * for free tier users who don't have payment events to trigger resets.
+ */
+export const resetExpiredUsage = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const companies = await ctx.db.query("companies").collect();
+
+    let resetCount = 0;
+    for (const company of companies) {
+      if (company.aiResponsesResetAt && company.aiResponsesResetAt <= now && company.aiResponsesThisMonth > 0) {
+        const newResetAt = now + 30 * 24 * 60 * 60 * 1000;
+        await ctx.db.patch(company._id, {
+          aiResponsesThisMonth: 0,
+          aiResponsesResetAt: newResetAt,
+          currentPeriodStart: now,
+          currentPeriodEnd: newResetAt,
+          usageWarningSent: false,
+          updatedAt: now,
+        });
+        resetCount++;
+        console.log(`  Reset usage for ${company.name} (was ${company.aiResponsesThisMonth}, reset was due ${new Date(company.aiResponsesResetAt).toISOString()})`);
+      }
+    }
+
+    if (resetCount > 0) {
+      console.log(`✅ Reset usage for ${resetCount} companies`);
+    }
+
+    return { success: true, resetCount };
+  },
+});
 
 /**
  * Aggregate daily usage from hourly records

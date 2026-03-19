@@ -37,6 +37,19 @@ crons.interval(
 );
 
 /**
+ * Reset expired usage counters
+ *
+ * Runs hourly to reset aiResponsesThisMonth for companies whose
+ * billing period has ended. Critical for free tier users who don't
+ * have payment events to trigger resets.
+ */
+crons.hourly(
+  "reset expired usage",
+  { minuteUTC: 30 },
+  internal.usage.crons.resetExpiredUsage
+);
+
+/**
  * Aggregate daily usage from hourly records
  *
  * Runs daily at midnight UTC to aggregate hourly usage records into daily totals.

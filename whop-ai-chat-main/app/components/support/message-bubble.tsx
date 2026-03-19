@@ -69,7 +69,8 @@ export interface Message {
     | "department_selected"
     | "agent_joined"
     | "agent_left"
-    | "issue_resolved";
+    | "issue_resolved"
+    | "auto_resolved";
 }
 
 interface MessageBubbleProps {

@@ -47,7 +47,8 @@ export default defineSchema({
   companies: defineTable({
     // Core company info
     whopCompanyId: v.string(), // Whop's company ID
-    whopExperienceId: v.optional(v.string()), // Experience ID for this company's app installation
+    whopExperienceId: v.optional(v.string()), // Primary experience ID (kept for backwards compat)
+    whopExperienceIds: v.optional(v.array(v.string())), // All known experience IDs for this company
     whopCompanyRoute: v.optional(v.string()), // Company slug/route (stable across reinstalls)
     name: v.string(),
     domain: v.optional(v.string()),
@@ -229,6 +230,11 @@ export default defineSchema({
     handoffTriggeredAt: v.optional(v.number()),
     handoffReason: v.optional(v.string()), // e.g., "User requested support staff", "Billing question"
 
+    // Customer satisfaction
+    csatRating: v.optional(v.union(v.literal("positive"), v.literal("negative"))),
+    csatFeedback: v.optional(v.string()),
+    csatRatedAt: v.optional(v.number()),
+
     // Conversation metadata
     messageCount: v.number(),
     lastMessageAt: v.number(),
@@ -314,7 +320,8 @@ export default defineSchema({
         v.literal("department_selected"),
         v.literal("agent_joined"),
         v.literal("agent_left"),
-        v.literal("issue_resolved")
+        v.literal("issue_resolved"),
+        v.literal("auto_resolved")
       )
     ),
   })
@@ -602,6 +609,7 @@ export default defineSchema({
     
     // Product details
     title: v.string(),
+    headline: v.optional(v.string()),
     description: v.optional(v.string()),
     price: v.optional(v.number()), // Price in cents
     currency: v.optional(v.string()), // Currency code (USD, EUR, etc.)

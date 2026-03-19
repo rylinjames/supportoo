@@ -24,6 +24,7 @@ import type * as billing_mutations from "../billing/mutations.js";
 import type * as billing_queries from "../billing/queries.js";
 import type * as companies_mutations from "../companies/mutations.js";
 import type * as companies_queries from "../companies/queries.js";
+import type * as conversations_autoResolve from "../conversations/autoResolve.js";
 import type * as conversations_export from "../conversations/export.js";
 import type * as conversations_mutations from "../conversations/mutations.js";
 import type * as conversations_queries from "../conversations/queries.js";
@@ -101,6 +102,7 @@ declare const fullApi: ApiFromModules<{
   "billing/queries": typeof billing_queries;
   "companies/mutations": typeof companies_mutations;
   "companies/queries": typeof companies_queries;
+  "conversations/autoResolve": typeof conversations_autoResolve;
   "conversations/export": typeof conversations_export;
   "conversations/mutations": typeof conversations_mutations;
   "conversations/queries": typeof conversations_queries;

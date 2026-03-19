@@ -324,11 +324,11 @@ export const generateChatResponse = action({
           productTitles: products.slice(0, 3).map((p: any) => p.title)
         });
 
-        // Stored plan prices are represented in cents in the existing table.
-        const formatPrice = (priceInCents: number | undefined, currency: string) => {
-          if (priceInCents === undefined || priceInCents === null) return null;
-          if (priceInCents === 0) return "Free";
-          const price = (priceInCents / 100).toFixed(2);
+        // Whop API returns prices in DOLLARS. Stored as rounded dollars.
+        const formatPrice = (priceInDollars: number | undefined, currency: string) => {
+          if (priceInDollars === undefined || priceInDollars === null) return null;
+          if (priceInDollars === 0) return "Free";
+          const price = priceInDollars.toFixed(2);
           return `${currency.toUpperCase()} $${price}`;
         };
 

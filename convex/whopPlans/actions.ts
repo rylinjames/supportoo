@@ -128,7 +128,7 @@ function getPlanInitialPrice(plan: any) {
     plan.rawInitialPrice ??
     plan.initial_price ??
     plan.initialPrice;
-  return value !== undefined && value !== null ? Math.round(value) : undefined;
+  return value !== undefined && value !== null ? Number(Number(value).toFixed(2)) : undefined;
 }
 
 function getPlanRenewalPrice(plan: any) {
@@ -136,7 +136,7 @@ function getPlanRenewalPrice(plan: any) {
     plan.rawRenewalPrice ??
     plan.renewal_price ??
     plan.renewalPrice;
-  return value !== undefined && value !== null ? Math.round(value) : undefined;
+  return value !== undefined && value !== null ? Number(Number(value).toFixed(2)) : undefined;
 }
 
 function getPlanCurrency(plan: any) {

@@ -230,6 +230,11 @@ export default defineSchema({
     handoffTriggeredAt: v.optional(v.number()),
     handoffReason: v.optional(v.string()), // e.g., "User requested support staff", "Billing question"
 
+    // Customer satisfaction
+    csatRating: v.optional(v.union(v.literal("positive"), v.literal("negative"))),
+    csatFeedback: v.optional(v.string()),
+    csatRatedAt: v.optional(v.number()),
+
     // Conversation metadata
     messageCount: v.number(),
     lastMessageAt: v.number(),
@@ -315,7 +320,8 @@ export default defineSchema({
         v.literal("department_selected"),
         v.literal("agent_joined"),
         v.literal("agent_left"),
-        v.literal("issue_resolved")
+        v.literal("issue_resolved"),
+        v.literal("auto_resolved")
       )
     ),
   })

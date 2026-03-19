@@ -187,11 +187,10 @@ const InnerLayout = ({ children }: LayoutProps) => {
         if (previousUserIdRef.current === userId) {
           setCurrentUser(res.userData);
 
-          // Disable automatic redirects to allow users to navigate freely
-          // Users can manually navigate using the Admin Dashboard button
-          // if (res.redirectTo) {
-          //   router.push(res.redirectTo);
-          // }
+          // Redirect new admins to setup wizard
+          if (res.userData && !res.userData.setupComplete && res.userData.isFirstAdmin) {
+            router.push(`/experiences/${experienceId}/setup`);
+          }
         }
       } catch (error) {
         setError(`Error authenticating user: ${error}`);

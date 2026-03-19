@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Send, Paperclip, Loader2, X, Building2 } from "lucide-react";
+import { Send, Paperclip, Loader2, X, Building2, ThumbsUp, ThumbsDown } from "lucide-react";
 import {
   MessageBubble,
   type Message as MessageBubbleMessage,
@@ -46,7 +46,8 @@ interface Message {
     | "department_selected"
     | "agent_joined"
     | "agent_left"
-    | "issue_resolved";
+    | "issue_resolved"
+    | "auto_resolved";
 }
 
 export function CustomerChatDetail({
@@ -67,6 +68,23 @@ export function CustomerChatDetail({
   );
   const [presenceReady, setPresenceReady] = useState(false);
   const [presenceId, setPresenceId] = useState<Id<"presence"> | null>(null);
+  const [csatSubmitted, setCsatSubmitted] = useState(false);
+
+  const submitCSAT = useMutation(api.conversations.mutations.submitCSATRating);
+  const isResolved = conversation.status === "resolved";
+  const hasRated = !!conversation.csatRating || csatSubmitted;
+
+  const handleCSATRating = async (rating: "positive" | "negative") => {
+    try {
+      await submitCSAT({
+        conversationId: conversation._id as Id<"conversations">,
+        rating,
+      });
+      setCsatSubmitted(true);
+    } catch (e) {
+      console.error("Failed to submit CSAT:", e);
+    }
+  };
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -515,6 +533,32 @@ export function CustomerChatDetail({
 
       <div className="sticky bottom-0 bg-background px-4 pb-4">
         <div className="max-w-[800px] mx-auto">
+          {isResolved && !hasRated && (
+            <div className="mb-3 p-4 rounded-lg border border-border bg-card text-center">
+              <p className="text-body-sm text-muted-foreground mb-3">Was your issue resolved?</p>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={() => handleCSATRating("positive")}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border hover:border-green-500 hover:bg-green-500/10 transition-all text-body-sm"
+                >
+                  <ThumbsUp className="h-4 w-4" />
+                  Yes
+                </button>
+                <button
+                  onClick={() => handleCSATRating("negative")}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border hover:border-red-500 hover:bg-red-500/10 transition-all text-body-sm"
+                >
+                  <ThumbsDown className="h-4 w-4" />
+                  No
+                </button>
+              </div>
+            </div>
+          )}
+          {isResolved && hasRated && (
+            <div className="mb-3 p-3 rounded-lg border border-border bg-card text-center">
+              <p className="text-body-sm text-muted-foreground">Thanks for your feedback!</p>
+            </div>
+          )}
           <Card className="px-4 py-3">
             <textarea
               ref={textareaRef}

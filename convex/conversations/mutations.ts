@@ -635,6 +635,32 @@ export const markIssueResolved = mutation({
 });
 
 // ============================================================================
+// SUBMIT CSAT RATING
+// ============================================================================
+
+export const submitCSATRating = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    rating: v.union(v.literal("positive"), v.literal("negative")),
+    feedback: v.optional(v.string()),
+  },
+  handler: async (ctx, { conversationId, rating, feedback }) => {
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation) throw new Error("Conversation not found");
+    if (conversation.csatRating) return { success: true, alreadyRated: true };
+
+    await ctx.db.patch(conversationId, {
+      csatRating: rating,
+      csatFeedback: feedback,
+      csatRatedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+// ============================================================================
 // CLEAR PENDING AI JOB
 // ============================================================================
 

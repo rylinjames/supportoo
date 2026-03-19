@@ -37,6 +37,18 @@ crons.interval(
 );
 
 /**
+ * Auto-resolve stale conversations
+ *
+ * Runs daily to resolve conversations with no activity for 7+ days.
+ * Prevents stale tickets from cluttering the dashboard.
+ */
+crons.daily(
+  "auto-resolve stale conversations",
+  { hourUTC: 4, minuteUTC: 0 }, // 4am UTC
+  internal.conversations.autoResolve.autoResolveStaleConversations
+);
+
+/**
  * Reset expired usage counters
  *
  * Runs hourly to reset aiResponsesThisMonth for companies whose

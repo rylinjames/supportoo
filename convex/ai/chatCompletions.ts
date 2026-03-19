@@ -793,30 +793,41 @@ ${company.aiSystemPrompt || ""}`;
         }
       }
 
-      // 7. Store the AI response
-      const aiMessageId = await ctx.runMutation(api.messages.mutations.createMessage, {
-        conversationId,
-        content: response,
-        role: "ai",
-        aiModel: company.selectedAiModel || "gpt-5.2",
-        processingTime,
-        tokensUsed: usage?.total_tokens,
-      });
-      
-      // Mark that message was successfully created
-      aiMessageCreated = true;
-
-      // 8. Handle handoff if needed
+      // 7. Handle handoff FIRST — if triggered, skip the AI deflection response
+      let aiMessageId: string | undefined;
       if (shouldHandoff) {
         try {
           await ctx.runMutation(api.conversations.mutations.triggerHandoff, {
             conversationId,
             reason: handoffReason,
           });
+          // Handoff succeeded — don't send the AI response (the handoff system
+          // message is the only thing the customer should see)
+          aiMessageCreated = true;
         } catch (handoffError) {
           console.warn("Failed to trigger handoff:", handoffError);
-          // Don't fail the whole request if handoff fails
+          // Handoff failed — fall through and send the AI response as fallback
+          aiMessageId = await ctx.runMutation(api.messages.mutations.createMessage, {
+            conversationId,
+            content: response,
+            role: "ai",
+            aiModel: company.selectedAiModel || "gpt-5.2",
+            processingTime,
+            tokensUsed: usage?.total_tokens,
+          });
+          aiMessageCreated = true;
         }
+      } else {
+        // 8. No handoff — store the AI response normally
+        aiMessageId = await ctx.runMutation(api.messages.mutations.createMessage, {
+          conversationId,
+          content: response,
+          role: "ai",
+          aiModel: company.selectedAiModel || "gpt-5.2",
+          processingTime,
+          tokensUsed: usage?.total_tokens,
+        });
+        aiMessageCreated = true;
       }
 
       // 9. Track usage

@@ -196,7 +196,7 @@ export const requestHumanSupport = mutation({
           conversationId,
           companyId: conversation.companyId,
           role: "system",
-          content: `Before connecting you with our team, which department can best help you?\n\n${deptList}`,
+          content: `Connecting you with our team! Please select a department below so we can route you to the right person.\n\n${deptList}`,
           timestamp: now,
           systemMessageType: "department_prompt",
         });
@@ -217,7 +217,7 @@ export const requestHumanSupport = mutation({
       conversationId,
       companyId: conversation.companyId,
       role: "system",
-      content: "Conversation handed off to support staff.",
+      content: "Connecting you with a support agent. Someone will be with you shortly!",
       timestamp: now,
       systemMessageType: "handoff",
     });
@@ -399,7 +399,7 @@ export const triggerHandoff = mutation({
           conversationId,
           companyId: conversation.companyId,
           role: "system",
-          content: `Before connecting you with our team, which department can best help you?\n\n${deptList}`,
+          content: `Connecting you with our team! Please select a department below so we can route you to the right person.\n\n${deptList}`,
           timestamp: now,
           systemMessageType: "department_prompt",
         });
@@ -420,7 +420,7 @@ export const triggerHandoff = mutation({
       conversationId,
       companyId: conversation.companyId,
       role: "system",
-      content: "Conversation handed off to support staff.",
+      content: "Connecting you with a support agent. Someone will be with you shortly!",
       timestamp: now,
       systemMessageType: "handoff",
     });

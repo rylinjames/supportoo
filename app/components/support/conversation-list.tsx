@@ -23,7 +23,7 @@ interface ConversationListProps {
 const STATUS_FILTERS: { value: ConversationStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "available", label: "Available" },
-  { value: "awaiting_department", label: "Pending" },
+  { value: "awaiting_department", label: "Awaiting Routing" },
   { value: "ai", label: "AI" },
   { value: "support", label: "Support" },
   { value: "resolved", label: "Resolved" },
@@ -39,9 +39,19 @@ export function ConversationList({
   const [statusFilter, setStatusFilter] = useState<ConversationStatus | "all">(
     "all"
   );
+  const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"recent" | "oldest" | "newest">(
     "recent"
   );
+
+  // Get unique department names for filter
+  const departments = useMemo(() => {
+    const deptNames = new Set<string>();
+    conversations.forEach((conv) => {
+      if (conv.departmentName) deptNames.add(conv.departmentName);
+    });
+    return Array.from(deptNames).sort();
+  }, [conversations]);
 
   // Filter and sort conversations
   const filteredConversations = useMemo(() => {
@@ -63,6 +73,11 @@ export function ConversationList({
       filtered = filtered.filter((conv) => conv.status === statusFilter);
     }
 
+    // Department filter
+    if (departmentFilter !== "all") {
+      filtered = filtered.filter((conv) => conv.departmentName === departmentFilter);
+    }
+
     // Sort
     filtered.sort((a, b) => {
       if (sortBy === "recent") {
@@ -75,7 +90,7 @@ export function ConversationList({
     });
 
     return filtered;
-  }, [conversations, searchQuery, statusFilter, sortBy]);
+  }, [conversations, searchQuery, statusFilter, departmentFilter, sortBy]);
 
   // Separate conversations needing attention (available + awaiting_department)
   const availableConversations = filteredConversations.filter(
@@ -86,7 +101,7 @@ export function ConversationList({
   );
 
   const availableCount = availableConversations.length;
-  const hasFilters = searchQuery || statusFilter !== "all";
+  const hasFilters = searchQuery || statusFilter !== "all" || departmentFilter !== "all";
 
   return (
     <div className="flex flex-col h-full">
@@ -143,6 +158,23 @@ export function ConversationList({
                 </button>
               ))}
             </div>
+
+            {departments.length > 0 && (
+              <Select
+                value={departmentFilter}
+                onValueChange={setDepartmentFilter}
+              >
+                <SelectTrigger className="h-8 w-[120px] text-xs border-0 bg-secondary">
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Depts</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
 
             <Select
               value={sortBy}

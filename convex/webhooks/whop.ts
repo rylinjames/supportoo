@@ -156,34 +156,17 @@ export const handlePaymentSucceeded = action({
 
     console.log("  ✅ Found company:", company.name);
 
-    // Step 3: Check if plan was already activated directly by the frontend
-    // (idempotent - skip update if already on the correct plan)
-    if (company.planId === plan._id && company.billingStatus === "active" && !isRenewal) {
-      console.log("  ℹ️ Plan already activated (likely by direct activation), updating membership ID only");
-      // Still update the membership ID since the webhook has it
-      if (membershipId) {
-        await ctx.runMutation(api.billing.mutations.updateCompanyPlan, {
-          companyId: company._id,
-          newPlanId: plan._id,
-          whopMembershipId: membershipId,
-          lastPaymentAt: paidAt ? paidAt * 1000 : Date.now(),
-          isRenewal: false,
-          clearScheduledChange: true,
-        });
-      }
-    } else {
-      // Step 4: Update company plan (and clear any scheduled downgrade)
-      await ctx.runMutation(api.billing.mutations.updateCompanyPlan, {
+    // Step 3: Activate subscription (source of truth) + sync company cache
+    if (plan.name === "pro" || plan.name === "elite") {
+      await ctx.runMutation(api.billing.mutations.activateSubscription, {
         companyId: company._id,
-        newPlanId: plan._id,
         whopMembershipId: membershipId,
-        lastPaymentAt: paidAt ? paidAt * 1000 : Date.now(),
-        isRenewal,
-        clearScheduledChange: true,
+        whopPlanId,
+        planName: plan.name,
       });
     }
 
-    console.log("  ✅ Updated company plan to:", plan.name);
+    console.log("  ✅ Activated subscription for plan:", plan.name);
 
     // Step 4: Record billing event
     await ctx.runMutation(api.billing.mutations.recordBillingEvent, {
@@ -362,37 +345,26 @@ export const handleMembershipCancelled = action({
       throw new Error(`Company not found for membershipId: ${membershipId}, whopCompanyId: ${whopCompanyId}`);
     }
 
-    // Step 2: Get free plan
-    const freePlan = await ctx.runQuery(api.plans.queries.getPlanByName, {
-      name: "free",
-    });
-
-    if (!freePlan) {
-      throw new Error("Free plan not found");
-    }
-
-    // Step 3: Schedule downgrade to free plan (don't execute immediately!)
-    await ctx.runMutation(api.billing.mutations.schedulePlanDowngrade, {
-      companyId: company._id,
-      scheduledPlanId: freePlan._id,
-      scheduledFor: company.currentPeriodEnd, // End of their paid period
-    });
-
-    console.log(
-      "  ✅ Scheduled downgrade to free plan for:",
-      new Date(company.currentPeriodEnd).toISOString()
-    );
-
-    // Step 4: Record billing event
-    await ctx.runMutation(api.billing.mutations.recordBillingEvent, {
-      companyId: company._id,
-      eventType: "subscription_cancelled",
+    // Step 2: Deactivate subscription (sets active=false, reverts company to free)
+    await ctx.runMutation(api.billing.mutations.deactivateSubscription, {
       whopMembershipId: membershipId,
-      whopUserId: userId,
-      whopPlanId,
-      newPlanId: freePlan._id,
-      rawData: data,
     });
+
+    console.log("  ✅ Deactivated subscription, company reverted to free");
+
+    // Step 3: Record billing event
+    const freePlan = await ctx.runQuery(api.plans.queries.getPlanByName, { name: "free" });
+    if (freePlan) {
+      await ctx.runMutation(api.billing.mutations.recordBillingEvent, {
+        companyId: company._id,
+        eventType: "subscription_cancelled",
+        whopMembershipId: membershipId,
+        whopUserId: userId,
+        whopPlanId,
+        newPlanId: freePlan._id,
+        rawData: data,
+      });
+    }
 
     console.log("  ✅ Recorded cancellation event");
     console.log("✨ Cancellation processed successfully!");

@@ -255,3 +255,116 @@ export const recordBillingEvent = mutation({
     return eventId;
   },
 });
+
+// ============================================================================
+// SUBSCRIPTION MUTATIONS (webhook-driven, source of truth)
+// ============================================================================
+
+export const activateSubscription = mutation({
+  args: {
+    companyId: v.id("companies"),
+    whopMembershipId: v.string(),
+    whopPlanId: v.string(),
+    planName: v.union(v.literal("pro"), v.literal("elite")),
+  },
+  handler: async (ctx, { companyId, whopMembershipId, whopPlanId, planName }) => {
+    const now = Date.now();
+
+    const existing = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_whop_membership_id", (q) => q.eq("whopMembershipId", whopMembershipId))
+      .first();
+
+    if (existing) {
+      if (existing.active) return { success: true, subscriptionId: existing._id };
+      await ctx.db.patch(existing._id, {
+        active: true,
+        deactivatedAt: undefined,
+      });
+      console.log(`[activateSubscription] Reactivated ${whopMembershipId} for ${planName}`);
+    } else {
+      await ctx.db.insert("subscriptions", {
+        companyId,
+        whopMembershipId,
+        whopPlanId,
+        planName,
+        active: true,
+        createdAt: now,
+      });
+      console.log(`[activateSubscription] Created subscription ${whopMembershipId} for ${planName}`);
+    }
+
+    // Sync company cache
+    const plan = await ctx.db
+      .query("plans")
+      .withIndex("by_name", (q) => q.eq("name", planName))
+      .first();
+
+    if (plan) {
+      const periodEnd = now + 30 * 24 * 60 * 60 * 1000;
+      await ctx.db.patch(companyId, {
+        planId: plan._id,
+        billingStatus: "active",
+        whopMembershipId,
+        lastPaymentAt: now,
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+        aiResponsesThisMonth: 0,
+        aiResponsesResetAt: periodEnd,
+        usageWarningSent: false,
+        scheduledPlanChangeAt: undefined,
+        scheduledPlanId: undefined,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true };
+  },
+});
+
+export const deactivateSubscription = mutation({
+  args: {
+    whopMembershipId: v.string(),
+  },
+  handler: async (ctx, { whopMembershipId }) => {
+    const now = Date.now();
+
+    const subscription = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_whop_membership_id", (q) => q.eq("whopMembershipId", whopMembershipId))
+      .first();
+
+    if (!subscription) {
+      console.warn(`[deactivateSubscription] No subscription found for ${whopMembershipId}`);
+      return { success: false };
+    }
+
+    await ctx.db.patch(subscription._id, {
+      active: false,
+      deactivatedAt: now,
+    });
+
+    // Sync company cache — fall back to free plan
+    const freePlan = await ctx.db
+      .query("plans")
+      .withIndex("by_name", (q) => q.eq("name", "free"))
+      .first();
+
+    if (freePlan) {
+      const periodEnd = now + 30 * 24 * 60 * 60 * 1000;
+      await ctx.db.patch(subscription.companyId, {
+        planId: freePlan._id,
+        billingStatus: "canceled",
+        aiResponsesThisMonth: 0,
+        aiResponsesResetAt: periodEnd,
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+        usageWarningSent: false,
+        updatedAt: now,
+      });
+    }
+
+    console.log(`[deactivateSubscription] Deactivated ${whopMembershipId}, company reverted to free`);
+    return { success: true };
+  },
+});

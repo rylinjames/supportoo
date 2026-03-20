@@ -8,6 +8,22 @@ import { v } from "convex/values";
  */
 
 /**
+ * Get active subscription for a company
+ * Returns null if on free plan (no active subscription)
+ */
+export const getActiveSubscription = query({
+  args: { companyId: v.id("companies") },
+  handler: async (ctx, { companyId }) => {
+    return await ctx.db
+      .query("subscriptions")
+      .withIndex("by_company_active", (q) =>
+        q.eq("companyId", companyId).eq("active", true)
+      )
+      .first();
+  },
+});
+
+/**
  * Get billing history for a company
  */
 export const getBillingHistory = query({

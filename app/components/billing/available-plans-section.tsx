@@ -169,24 +169,7 @@ export function AvailablePlansSection({
       });
 
       if (result.success) {
-        // Step 4: Activate plan directly in our database.
-        // Don't rely on webhook alone - it can fail silently.
-        try {
-          await activatePlanAfterPayment({
-            companyId: companyId as Id<"companies">,
-            targetPlanName: targetPlanName as "pro" | "elite",
-            whopUserId: userData.user.whopUserId,
-            receiptId: result.receiptId,
-          });
-          toast.success(successMessage);
-        } catch (activationError) {
-          console.error("Direct plan activation failed:", activationError);
-          // Payment went through but activation failed - still show success
-          // since the webhook should eventually process it
-          toast.success(
-            "Payment successful! Your plan will update shortly."
-          );
-        }
+        toast.success("Payment successful! Your plan will update shortly.");
       } else {
         toast.error(result.error || "Payment failed");
       }

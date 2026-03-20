@@ -572,6 +572,22 @@ export default defineSchema({
     .index("by_updated", ["updatedAt"]),
 
   // ============================================================================
+  // SUBSCRIPTIONS - Webhook-driven subscription records (source of truth)
+  // ============================================================================
+  subscriptions: defineTable({
+    companyId: v.id("companies"),
+    whopMembershipId: v.string(),
+    whopPlanId: v.string(),
+    planName: v.union(v.literal("pro"), v.literal("elite")),
+    active: v.boolean(),
+    createdAt: v.number(),
+    deactivatedAt: v.optional(v.number()),
+  })
+    .index("by_whop_membership_id", ["whopMembershipId"])
+    .index("by_company", ["companyId"])
+    .index("by_company_active", ["companyId", "active"]),
+
+  // ============================================================================
   // USAGE RECORDS - Aggregated usage stats for insights
   // ============================================================================
   usage_records: defineTable({

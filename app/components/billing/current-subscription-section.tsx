@@ -40,8 +40,12 @@ export function CurrentSubscriptionSection({
   );
 
   // Format plan name
-  const planName =
-    plan.name.charAt(0).toUpperCase() + plan.name.slice(1) + " Plan";
+  const PLAN_DISPLAY_NAMES: Record<string, string> = {
+    free: "Free Plan",
+    pro: "Starter Plan",
+    elite: "Professional Plan",
+  };
+  const planName = PLAN_DISPLAY_NAMES[plan.name] || plan.name.charAt(0).toUpperCase() + plan.name.slice(1) + " Plan";
 
   // Format price
   const priceInDollars = (plan.price / 100).toFixed(0);

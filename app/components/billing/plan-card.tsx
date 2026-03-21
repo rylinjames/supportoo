@@ -24,8 +24,12 @@ export function PlanCard({
   scheduledPlanChangeAt,
   onAction,
 }: PlanCardProps) {
-  const planName =
-    plan.displayName || plan.name.charAt(0).toUpperCase() + plan.name.slice(1) + " Plan";
+  const PLAN_DISPLAY_NAMES: Record<string, string> = {
+    free: "Free Plan",
+    pro: "Starter Plan",
+    elite: "Professional Plan",
+  };
+  const planName = plan.displayName || PLAN_DISPLAY_NAMES[plan.name] || plan.name.charAt(0).toUpperCase() + plan.name.slice(1) + " Plan";
   const priceInDollars = (plan.price / 100).toFixed(0);
 
   // Build features dynamically from plan data
@@ -33,7 +37,7 @@ export function PlanCard({
     const items: string[] = [];
 
     if (p.name === "pro") items.push("Everything in Free Plan");
-    if (p.name === "elite") items.push("Everything in Pro Plan");
+    if (p.name === "elite") items.push("Everything in Starter Plan");
 
     items.push(`${p.aiResponsesPerMonth.toLocaleString()} AI responses/month`);
 

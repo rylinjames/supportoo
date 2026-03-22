@@ -54,9 +54,15 @@ export async function POST(request: Request) {
     // Log the full webhook data for inspection
     console.log("📦 Full webhook data:", JSON.stringify(webhook, null, 2));
 
+    // Log raw action for debugging
+    console.log("📋 Raw webhook action:", webhook.action);
+    console.log("📋 Webhook keys:", Object.keys(webhook));
+    console.log("📋 Webhook data keys:", webhook.data ? Object.keys(webhook.data) : "no data");
+
     // Handle different webhook events
     // Whop sends action with dots (v2) or underscores (v1) — handle both
-    const action = webhook.action?.replace(/_/g, ".") || "";
+    const wh = webhook as any;
+    const action = (wh.action || wh.event || wh.type || "")?.replace(/_/g, ".");
     console.log("📋 Normalized action:", action);
 
     switch (action) {

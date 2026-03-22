@@ -55,11 +55,15 @@ export async function POST(request: Request) {
     console.log("📦 Full webhook data:", JSON.stringify(webhook, null, 2));
 
     // Handle different webhook events
-    switch (webhook.action) {
-      case "payment.succeeded":
-        console.log("💳 Processing payment.succeeded");
+    // Whop sends action with dots (v2) or underscores (v1) — handle both
+    const action = webhook.action?.replace(/_/g, ".") || "";
+    console.log("📋 Normalized action:", action);
 
-        // Call Convex action to handle payment
+    switch (action) {
+      case "payment.succeeded":
+      case "payment.created":
+        console.log("💳 Processing payment event");
+
         await convex.action(api.webhooks.whop.handlePaymentSucceeded, {
           webhookData: webhook,
         });
@@ -67,11 +71,10 @@ export async function POST(request: Request) {
         console.log("✅ Payment processed successfully");
         break;
 
-      case "membership.went_valid":
-        console.log("✅ Processing membership.went_valid");
+      case "membership.went.valid":
+      case "membership.activated":
+        console.log("✅ Processing membership activation");
 
-        // Call Convex action to handle new membership access
-        // This captures company info for experience→company mapping
         await convex.action(api.webhooks.whop.handleMembershipValid, {
           webhookData: webhook,
         });
@@ -79,10 +82,10 @@ export async function POST(request: Request) {
         console.log("✅ Membership access processed successfully");
         break;
 
-      case "membership.went_invalid":
-        console.log("❌ Processing membership.went_invalid");
+      case "membership.went.invalid":
+      case "membership.deactivated":
+        console.log("❌ Processing membership deactivation");
 
-        // Call Convex action to handle cancellation
         await convex.action(api.webhooks.whop.handleMembershipCancelled, {
           webhookData: webhook,
         });
@@ -90,8 +93,13 @@ export async function POST(request: Request) {
         console.log("✅ Cancellation processed successfully");
         break;
 
+      case "membership.cancel.at.period.end.changed":
+        console.log("⏳ Processing cancel at period end change");
+        // Log for now — the deactivation webhook handles the actual downgrade
+        break;
+
       default:
-        console.log("❓ Unknown webhook action:", webhook.action);
+        console.log("❓ Unknown webhook action:", webhook.action, "→", action);
         console.log("Ignoring event");
     }
 

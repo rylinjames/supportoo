@@ -49,7 +49,8 @@ export async function getCSRFFromCookie(): Promise<string | null> {
  */
 export async function validateCSRFToken(request: Request): Promise<boolean> {
   // Skip CSRF for webhook endpoints (they use signature validation)
-  if (request.url.includes('/api/webhooks/')) {
+  // Also skip for root POST (middleware rewrites to webhook route)
+  if (request.url.includes('/api/webhooks/') || new URL(request.url).pathname === '/') {
     return true;
   }
 

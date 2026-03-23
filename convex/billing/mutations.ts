@@ -2,6 +2,16 @@ import { v } from "convex/values";
 import { mutation } from "../_generated/server";
 
 /**
+ * Debug: log webhook arrival to Convex (visible in Convex dashboard logs)
+ */
+export const logWebhookArrival = mutation({
+  args: { message: v.string(), data: v.optional(v.any()) },
+  handler: async (ctx, { message, data }) => {
+    console.log(`[WEBHOOK DEBUG] ${message}`, data ? JSON.stringify(data).substring(0, 500) : "");
+  },
+});
+
+/**
  * Billing Mutations
  *
  * Internal mutations for managing billing state.

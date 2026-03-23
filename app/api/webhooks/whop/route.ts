@@ -35,9 +35,19 @@ const convex = new ConvexHttpClient(convexUrl);
 
 export async function POST(request: Request) {
   try {
+    // Log to Convex immediately so we can see if the request arrives
+    try {
+      await convex.mutation(api.billing.mutations.logWebhookArrival, {
+        message: "Webhook POST received",
+        data: { url: request.url, method: request.method, headers: Object.fromEntries([...request.headers.entries()].filter(([k]) => k.startsWith('x-') || k === 'content-type' || k.includes('whop') || k.includes('webhook'))) },
+      });
+    } catch (e) {
+      // Don't let logging failure block the webhook
+    }
+
     console.log("🔔 Webhook received from Whop");
 
-    // Note: CSRF is automatically skipped for webhook endpoints  
+    // Note: CSRF is automatically skipped for webhook endpoints
     // as they use signature validation instead
     const csrfResponse = await csrfMiddleware(request);
     if (csrfResponse) {

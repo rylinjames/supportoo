@@ -30,22 +30,20 @@ export const handlePaymentSucceeded = action({
   ): Promise<{ success: boolean; planName: string; reason?: string }> => {
     console.log("💳 Processing payment.succeeded webhook");
 
-    const data = webhookData.data;
+    const data = webhookData.data ?? webhookData;
 
-    // Extract key fields
-    const {
-      id: paymentId,
-      membership_id: membershipId,
-      user_id: userId,
-      plan_id: whopPlanId,
-      company_id: whopCompanyId,
-      subtotal,
-      final_amount: amount,
-      currency,
-      paid_at: paidAt,
-      billing_reason: billingReason,
-      metadata,
-    } = data;
+    // Extract key fields — handle both flat and nested formats
+    const paymentId = data.id;
+    const membershipId = data.membership?.id || data.membership_id || (typeof data.membership === 'string' ? data.membership : undefined);
+    const userId = data.user_id || data.user?.id;
+    const whopPlanId = data.plan?.id || data.plan_id;
+    const whopCompanyId = data.company_id || data.company?.id || data.page_id;
+    const subtotal = data.subtotal;
+    const amount = data.final_amount || data.amount;
+    const currency = data.currency;
+    const paidAt = data.paid_at;
+    const billingReason = data.billing_reason;
+    const metadata = data.metadata;
 
     console.log("  - Whop plan ID:", whopPlanId);
     console.log("  - Membership ID:", membershipId);
@@ -301,17 +299,15 @@ export const handleMembershipCancelled = action({
     webhookData: v.any(),
   },
   handler: async (ctx, { webhookData }): Promise<{ success: boolean }> => {
-    console.log("❌ Processing membership.went_invalid webhook");
+    console.log("❌ Processing membership deactivated webhook");
 
-    const data = webhookData.data;
+    const data = webhookData.data ?? webhookData;
 
-    // Extract key fields
-    const {
-      id: membershipId,
-      user_id: userId,
-      plan_id: whopPlanId,
-      page_id: whopCompanyId,
-    } = data;
+    // Extract key fields — handle both flat and nested formats
+    const membershipId = data.id || data.membership_id || data.membership?.id || (typeof data.membership === 'string' ? data.membership : undefined);
+    const userId = data.user_id || data.user?.id;
+    const whopPlanId = data.plan_id || data.plan?.id;
+    const whopCompanyId = data.page_id || data.company_id || data.company?.id;
 
     console.log("  - Membership ID:", membershipId);
     console.log("  - Company ID:", whopCompanyId);
